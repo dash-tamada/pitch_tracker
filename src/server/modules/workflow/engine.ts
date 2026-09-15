@@ -107,7 +107,7 @@ export async function performAction(db: Db, actor: Actor, pitchId: string, rawIn
 
       const outcome = resolveOutcome(rule, pitch, input, stages);
       const seq = pitch.lastEventSeq + 1;
-      const approvalType = rule.isApproval ? (["CEO", "CBO"].find((r) => actor.roles.has(r)) ?? "DELEGATED") : null;
+      const approvalType = rule.isApproval ? (["CEO", "COO"].find((r) => actor.roles.has(r)) ?? "DELEGATED") : null;
 
       const [event] = await tx.insert(workflowEvents).values({
         pitchId: pitch.id, seq, action: input.action,

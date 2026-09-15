@@ -22,7 +22,7 @@ Reporting a vulnerability: email `[PLACEHOLDER: security contact]` — do not op
 | IP-based login throttling (30 failures / 15 min, DB-backed, works across instances) | Implemented, tested |
 | Same error for unknown email and wrong password; dummy hash equalises timing | Implemented, tested |
 | TOTP MFA (RFC 6238), secret encrypted with AES-256-GCM, replay protection | Implemented; algorithm tested against RFC vectors; enrolment endpoints not yet covered by integration tests |
-| MFA mandatory for Super Admin, Admin, CEO, CBO — their sessions cannot act until verified | Implemented, tested |
+| MFA mandatory for Super Admin, Admin, CEO, COO — their sessions cannot act until verified | Implemented, tested |
 | Password reset (single-use hashed token, 30 min) | **Not built** — table exists |
 | Email verification for new users | **Not built** |
 | Session rotation on privilege change (`revokeAllSessions`) | Function exists; not yet wired to role changes (no user-admin API yet) |

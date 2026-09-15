@@ -14,7 +14,7 @@ export const PERMISSIONS = {
   "pitch.reject": "Reject pitches",
   "pitch.request_changes": "Request changes",
   "pitch.hold": "Put pitches on hold and resume",
-  "pitch.approve_executive": "CEO/CBO approval, send back, greenlight",
+  "pitch.approve_executive": "CEO/COO approval, send back, greenlight",
   "pitch.send_to_platform": "Approve a pitch for platform pitching",
   "pitch.reopen": "Reopen rejected pitches",
   "pitch.archive": "Archive pitches",
@@ -48,7 +48,7 @@ export const PERMISSIONS = {
 export type Permission = keyof typeof PERMISSIONS;
 export const ALL_PERMISSIONS = Object.keys(PERMISSIONS) as Permission[];
 
-export const ROLE_KEYS = ["SUPER_ADMIN", "ADMIN", "SENIOR_EMPLOYEE", "EMPLOYEE", "CEO", "CBO", "VIEWER"] as const;
+export const ROLE_KEYS = ["SUPER_ADMIN", "ADMIN", "SENIOR_EMPLOYEE", "EMPLOYEE", "CEO", "COO", "VIEWER"] as const;
 export type RoleKey = (typeof ROLE_KEYS)[number];
 
 const REVIEW: Permission[] = [
@@ -80,9 +80,9 @@ export const DEFAULT_ROLE_MATRIX: Record<RoleKey, { name: string; permissions: P
   SENIOR_EMPLOYEE: { name: "Senior Employee", permissions: [...REVIEW, ...SENIOR_EXTRA] },
   EMPLOYEE: { name: "Employee", permissions: [...REVIEW] },
   CEO: { name: "CEO", permissions: [...REVIEW, ...SENIOR_EXTRA, ...EXECUTIVE_EXTRA] },
-  CBO: { name: "CBO", permissions: [...REVIEW, ...SENIOR_EXTRA, ...EXECUTIVE_EXTRA] },
+  COO: { name: "COO", permissions: [...REVIEW, ...SENIOR_EXTRA, ...EXECUTIVE_EXTRA] },
   VIEWER: { name: "Viewer", permissions: ["pitch.view", "creator.view", "platform.view", "analytics.view", "report.view"] },
 };
 
 /** Roles that must use MFA before any protected action. */
-export const MFA_REQUIRED_ROLES: ReadonlySet<RoleKey> = new Set(["SUPER_ADMIN", "ADMIN", "CEO", "CBO"]);
+export const MFA_REQUIRED_ROLES: ReadonlySet<RoleKey> = new Set(["SUPER_ADMIN", "ADMIN", "CEO", "COO"]);

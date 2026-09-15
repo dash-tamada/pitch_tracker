@@ -42,7 +42,7 @@ export async function makeTeam(db: Db) {
     outsider: await makeUser(db, "Unrelated Employee", ["EMPLOYEE"]),
     senior: await makeUser(db, "Senior Employee", ["SENIOR_EMPLOYEE"]),
     ceo: await makeUser(db, "CEO", ["CEO"], { clearance: "RESTRICTED" }),
-    cbo: await makeUser(db, "CBO", ["CBO"], { clearance: "RESTRICTED" }),
+    coo: await makeUser(db, "COO", ["COO"], { clearance: "RESTRICTED" }),
     admin: await makeUser(db, "Admin", ["ADMIN"]),
     viewer: await makeUser(db, "Viewer", ["VIEWER"]),
   };

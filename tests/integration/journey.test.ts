@@ -1,6 +1,6 @@
 /**
  * End-to-end journey through the real engine and PostgreSQL (brief §69):
- * Submitted → Employee A → B → C → CBO → Approved for Platform → Netflix → Netflix Approved
+ * Submitted → Employee A → B → C → COO → Approved for Platform → Netflix → Netflix Approved
  * → Ready for Development → Development → Greenlit → Pre-Production → Production → … → Released
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -38,12 +38,12 @@ describe("The Last Journey — full pipeline", () => {
     await act(team.employeeB, { action: "REQUEST_CHANGES", remarks: "Tighten episode 3", changeTypeKeys: ["SCRIPT"] });
     await act(team.employeeB, { action: "RESUME", remarks: "Script V2 received" });
     await act(team.employeeB, { action: "FORWARD", toStageKey: "INTERNAL_REVIEW", recipientId: team.employeeC.id, remarks: "Over to C" });
-    await act(team.employeeC, { action: "FORWARD", toStageKey: "EXECUTIVE_REVIEW", recipientId: team.cbo.id, remarks: "Ready for CBO" });
-    await act(team.cbo, { action: "SEND_TO_PLATFORM", recipientId: team.senior.id, remarks: "Pitch to Netflix first", recommendedPlatformIds: [netflix] });
+    await act(team.employeeC, { action: "FORWARD", toStageKey: "EXECUTIVE_REVIEW", recipientId: team.coo.id, remarks: "Ready for COO" });
+    await act(team.coo, { action: "SEND_TO_PLATFORM", recipientId: team.senior.id, remarks: "Pitch to Netflix first", recommendedPlatformIds: [netflix] });
     await act(team.senior, { action: "RECORD_PLATFORM_PITCH", platformId: netflix, remarks: "Deck + Script V2 sent" });
     await act(team.senior, { action: "MARK_PLATFORM_APPROVED", platformId: netflix, remarks: "Netflix approved second draft" });
-    await act(team.cbo, { action: "MARK_READY_FOR_DEVELOPMENT" });
-    await act(team.cbo, { action: "START_DEVELOPMENT", recipientId: team.senior.id });
+    await act(team.coo, { action: "MARK_READY_FOR_DEVELOPMENT" });
+    await act(team.coo, { action: "START_DEVELOPMENT", recipientId: team.senior.id });
     await act(team.ceo, { action: "GREENLIGHT", recipientId: team.senior.id, remarks: "Greenlit with Netflix" });
     for (let i = 0; i < 5; i++) await act(team.senior, { action: "ADVANCE" });
 
@@ -61,11 +61,11 @@ describe("The Last Journey — full pipeline", () => {
     ]);
     expect(events.map((e) => e.seq)).toEqual(events.map((_, i) => i + 1));
     const send = events.find((e) => e.action === "SEND_TO_PLATFORM")!;
-    expect(send).toMatchObject({ actorId: team.cbo.id, approvalType: "CBO", fromStageKey: "EXECUTIVE_REVIEW", toStageKey: "APPROVED_FOR_PLATFORM" });
+    expect(send).toMatchObject({ actorId: team.coo.id, approvalType: "COO", fromStageKey: "EXECUTIVE_REVIEW", toStageKey: "APPROVED_FOR_PLATFORM" });
     const approved = events.find((e) => e.action === "MARK_PLATFORM_APPROVED")!;
     expect(approved.platformId).toBe(await platformId(db, "Netflix"));
     const fwd = events.find((e) => e.action === "FORWARD" && e.toStageKey === "EXECUTIVE_REVIEW")!;
-    expect(fwd).toMatchObject({ fromOwnerId: team.employeeC.id, toOwnerId: team.cbo.id, remarks: "Ready for CBO" });
+    expect(fwd).toMatchObject({ fromOwnerId: team.employeeC.id, toOwnerId: team.coo.id, remarks: "Ready for COO" });
   });
 
   it("projection equals a fold of the event log (rule 20)", async () => {
@@ -85,7 +85,7 @@ describe("The Last Journey — full pipeline", () => {
 
   it("notified each recipient and audited each action", async () => {
     const n = await db.select().from(notifications).where(eq(notifications.pitchId, pitchId));
-    expect(new Set(n.map((x) => x.userId))).toEqual(new Set([team.employeeB.id, team.employeeC.id, team.cbo.id, team.senior.id]));
+    expect(new Set(n.map((x) => x.userId))).toEqual(new Set([team.employeeB.id, team.employeeC.id, team.coo.id, team.senior.id]));
     for (const x of n) expect(x.title).not.toMatch(/synopsis|script text/i);
     const audits = await db.select().from(auditLogs).where(eq(auditLogs.resourceId, pitchId));
     expect(audits.length).toBe(18); // pitch.created + 17 workflow actions

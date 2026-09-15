@@ -21,7 +21,7 @@ if (process.env.APP_ENV === "production" || process.env.NODE_ENV === "production
 const TEAM: [key: string, name: string, role: string, clearance: "CONFIDENTIAL" | "RESTRICTED"][] = [
   ["employee.a", "Employee A", "EMPLOYEE", "CONFIDENTIAL"], ["employee.b", "Employee B", "EMPLOYEE", "CONFIDENTIAL"],
   ["employee.c", "Employee C", "EMPLOYEE", "CONFIDENTIAL"], ["senior", "Senior Employee", "SENIOR_EMPLOYEE", "CONFIDENTIAL"],
-  ["ceo", "CEO", "CEO", "RESTRICTED"], ["cbo", "CBO", "CBO", "RESTRICTED"], ["admin", "Admin", "ADMIN", "CONFIDENTIAL"],
+  ["ceo", "CEO", "CEO", "RESTRICTED"], ["coo", "COO", "COO", "RESTRICTED"], ["admin", "Admin", "ADMIN", "CONFIDENTIAL"],
   ["viewer", "Viewer", "VIEWER", "CONFIDENTIAL"],
 ];
 
@@ -94,12 +94,12 @@ async function lastJourney(db: Db, creatorId: string, actor: (k: string) => Prom
   await step("employee.b", { action: "REQUEST_CHANGES", remarks: "Episode 3 drags.", changeTypeKeys: ["SCRIPT"] });
   await step("employee.b", { action: "RESUME", remarks: "Script V2 received." });
   await step("employee.b", { action: "FORWARD", toStageKey: "INTERNAL_REVIEW", recipientId: ids["employee.c"], remarks: "Please review V2." });
-  await step("employee.c", { action: "FORWARD", toStageKey: "EXECUTIVE_REVIEW", recipientId: ids["cbo"], remarks: "Ready for CBO." });
-  await step("cbo", { action: "SEND_TO_PLATFORM", recipientId: ids["senior"], remarks: "Take it to Netflix.", recommendedPlatformIds: [netflix] });
+  await step("employee.c", { action: "FORWARD", toStageKey: "EXECUTIVE_REVIEW", recipientId: ids["coo"], remarks: "Ready for COO." });
+  await step("coo", { action: "SEND_TO_PLATFORM", recipientId: ids["senior"], remarks: "Take it to Netflix.", recommendedPlatformIds: [netflix] });
   await step("senior", { action: "RECORD_PLATFORM_PITCH", platformId: netflix, remarks: "Deck and Script V2 sent." });
   await step("senior", { action: "MARK_PLATFORM_APPROVED", platformId: netflix, remarks: "Netflix approved the second draft." });
-  await step("cbo", { action: "MARK_READY_FOR_DEVELOPMENT" });
-  await step("cbo", { action: "START_DEVELOPMENT", recipientId: ids["senior"] });
+  await step("coo", { action: "MARK_READY_FOR_DEVELOPMENT" });
+  await step("coo", { action: "START_DEVELOPMENT", recipientId: ids["senior"] });
   await step("ceo", { action: "GREENLIGHT", recipientId: ids["senior"], remarks: "Greenlit." });
   await step("senior", { action: "ADVANCE" });
   await step("senior", { action: "ADVANCE" });

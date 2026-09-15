@@ -92,7 +92,7 @@ One deployable web app + one background worker, sharing a codebase. A modular mo
 | Tests | Vitest | 5.0.1 | 4.1.11 would not install (npm peer-resolution error); 5.0.1 installed cleanly and all tests pass |
 | DB | PostgreSQL | 16 | Brief §42 |
 
-**Authentication choice.** Assumed: company email + password (argon2id) + TOTP MFA, **mandatory MFA for Admin, Super Admin, CEO, CBO** — tell me if wrong. Sessions are opaque random tokens stored as HMAC-SHA256 (server-side pepper) in `sessions`; the cookie holds only the raw token. The auth module is behind an interface so Google Workspace SSO (OIDC) can replace passwords later without touching other modules.
+**Authentication choice.** Assumed: company email + password (argon2id) + TOTP MFA, **mandatory MFA for Admin, Super Admin, CEO, COO** — tell me if wrong. Sessions are opaque random tokens stored as HMAC-SHA256 (server-side pepper) in `sessions`; the cookie holds only the raw token. The auth module is behind an interface so Google Workspace SSO (OIDC) can replace passwords later without touching other modules.
 
 ### 2.3 Request lifecycle for a protected mutation (e.g. Reject)
 
@@ -161,7 +161,7 @@ erDiagram
 
 **Identity & access** — `users` (email unique, `password_hash`, `mfa_secret_enc`, `failed_login_count`, `locked_until`, `status`), `sessions` (`token_hash` unique, `expires_at`, `revoked_at`, `ip`, `user_agent`), `password_reset_tokens` (hashed, single use, 30 min), `roles`, `permissions`, `role_permissions`, `user_roles`.
 
-**Configuration** — `lookup_values` (type ∈ GENRE, SUB_GENRE, LANGUAGE, FORMAT, REJECTION_CATEGORY, CHANGE_REQUEST_TYPE, DOCUMENT_CATEGORY, IMAGE_CATEGORY, BUDGET_RANGE; `key`, `label`, `sort_order`, `active`), `rating_categories`, `system_settings` (typed JSON: aging thresholds, ratings visibility, self-approval policy, CEO/CBO approval mode, file limits).
+**Configuration** — `lookup_values` (type ∈ GENRE, SUB_GENRE, LANGUAGE, FORMAT, REJECTION_CATEGORY, CHANGE_REQUEST_TYPE, DOCUMENT_CATEGORY, IMAGE_CATEGORY, BUDGET_RANGE; `key`, `label`, `sort_order`, `active`), `rating_categories`, `system_settings` (typed JSON: aging thresholds, ratings visibility, self-approval policy, CEO/COO approval mode, file limits).
 
 **Workflow** — `workflow_definitions` (versioned; `is_active`), `workflow_stages` (`key`, `name`, `category` ∈ INTAKE/REVIEW/EXECUTIVE/PLATFORM/DEVELOPMENT/PRODUCTION/TERMINAL, `is_terminal`, `badge`), `workflow_transitions` (`from_stage_id`, `to_stage_id`, `action` ∈ ASSIGN/FORWARD/ACCEPT/REJECT/REQUEST_CHANGES/HOLD/RESUME/APPROVE/SEND_TO_PLATFORM/SEND_BACK/MARK_PLATFORM_APPROVED/START_DEVELOPMENT/GREENLIGHT/ADVANCE/REOPEN, `required_permission`, `allowed_role_keys[]`, `requires_remarks`, `requires_rejection_reason`, `requires_recipient`, `requires_change_types`, `recipient_role_keys[]`).
 
@@ -210,7 +210,7 @@ Two DB roles: `pitch_migrator` (DDL, used only by CI migrations) and `pitch_app`
 
 ### 4.3 Default role matrix (admin-editable, except Super Admin)
 
-| Permission group | Super Admin | Admin | Senior Emp. | Employee | CEO | CBO | Viewer |
+| Permission group | Super Admin | Admin | Senior Emp. | Employee | CEO | COO | Viewer |
 |---|---|---|---|---|---|---|---|
 | pitch.create / edit | ✓ | – | ✓ | ✓ | ✓ | ✓ | – |
 | pitch.view (need-to-know) | ✓ | – | ✓ | ✓ | ✓ | ✓ | ✓ |
@@ -239,7 +239,7 @@ A user can see pitch P iff not archived (or has `pitch.restore`) **and** one of:
 - is P's current owner, or
 - has a `pitch_participants` row for P (created, reviewed, was assigned, owns platform/dev/prod work).
 
-`RESTRICTED` pitches: only explicit participants + CEO/CBO/Super Admin. The same policy compiles to a SQL `WHERE` condition (`pitchVisibilityCondition`), so lists, search, Kanban, analytics and exports are filtered identically — there is no second code path to forget. Access failure returns **404**.
+`RESTRICTED` pitches: only explicit participants + CEO/COO/Super Admin. The same policy compiles to a SQL `WHERE` condition (`pitchVisibilityCondition`), so lists, search, Kanban, analytics and exports are filtered identically — there is no second code path to forget. Access failure returns **404**.
 
 ### 4.5 Hard rules
 - Users cannot change their own roles; Admin cannot grant/revoke Super Admin; last Super Admin cannot be removed.
@@ -259,7 +259,7 @@ stateDiagram-v2
   INITIAL_REVIEW --> INTERNAL_REVIEW: ACCEPT / FORWARD
   INTERNAL_REVIEW --> INTERNAL_REVIEW: FORWARD (owner changes)
   INTERNAL_REVIEW --> SENIOR_REVIEW: ACCEPT / FORWARD
-  SENIOR_REVIEW --> EXECUTIVE_REVIEW: ACCEPT / FORWARD to CEO/CBO
+  SENIOR_REVIEW --> EXECUTIVE_REVIEW: ACCEPT / FORWARD to CEO/COO
   INITIAL_REVIEW --> CHANGES_REQUESTED: REQUEST_CHANGES
   INTERNAL_REVIEW --> CHANGES_REQUESTED: REQUEST_CHANGES
   SENIOR_REVIEW --> CHANGES_REQUESTED: REQUEST_CHANGES
@@ -276,7 +276,7 @@ stateDiagram-v2
   PLATFORM_PITCHING --> PLATFORM_APPROVED: MARK_PLATFORM_APPROVED (needs platform_id + approved response)
   PLATFORM_APPROVED --> READY_FOR_DEVELOPMENT: automatic on configured condition
   READY_FOR_DEVELOPMENT --> DEVELOPMENT: START_DEVELOPMENT
-  DEVELOPMENT --> GREENLIT: GREENLIGHT (CEO/CBO)
+  DEVELOPMENT --> GREENLIT: GREENLIGHT (CEO/COO)
   GREENLIT --> PRE_PRODUCTION: ADVANCE
   PRE_PRODUCTION --> PRODUCTION: ADVANCE
   PRODUCTION --> POST_PRODUCTION: ADVANCE
@@ -286,7 +286,7 @@ stateDiagram-v2
   INTERNAL_REVIEW --> REJECTED: REJECT
   SENIOR_REVIEW --> REJECTED: REJECT
   EXECUTIVE_REVIEW --> REJECTED: REJECT
-  REJECTED --> SENIOR_REVIEW: REOPEN (CEO/CBO/Senior, remarks required)
+  REJECTED --> SENIOR_REVIEW: REOPEN (CEO/COO/Senior, remarks required)
   RELEASED --> [*]
 ```
 
@@ -397,14 +397,14 @@ Each has a default already built in so work is not blocked.
 
 1. **Do creators log in?** `Assumed:` no — employees enter pitches on creators' behalf; no external portal in v1 — tell me if wrong.
 2. **Are "Employee A/B/C" fixed people or levels?** `Assumed:` levels (Initial → Internal → Senior), any number of forwards within a level; the forwarder picks the person — tell me if wrong.
-3. **CEO and CBO: either one, or both required?** `Assumed:` either one (setting `executive_approval_mode = ANY`, switchable to `ALL`) — tell me if wrong.
-4. **Employee "Accept"**: final or a recommendation? `Assumed:` recommendation that must name the next reviewer (brief §14); only CEO/CBO give final approval — tell me if wrong.
+3. **CEO and COO: either one, or both required?** `Assumed:` either one (setting `executive_approval_mode = ANY`, switchable to `ALL`) — tell me if wrong.
+4. **Employee "Accept"**: final or a recommendation? `Assumed:` recommendation that must name the next reviewer (brief §14); only CEO/COO give final approval — tell me if wrong.
 5. **Multiple platforms at once and exclusivity.** `Assumed:` a pitch may be pitched to several platforms in parallel; the first `Approved` response (recorded by an authorized user) moves the pitch to Ready for Development; other open platform pitches are flagged for a decision, not auto-closed — tell me if wrong.
-6. **Can a rejected pitch be reopened?** `Assumed:` yes, by Senior/CEO/CBO with mandatory remarks, as a new event — tell me if wrong.
-7. **Who greenlights?** `Assumed:` CEO or CBO records it, referencing the approving platform — tell me if wrong.
+6. **Can a rejected pitch be reopened?** `Assumed:` yes, by Senior/CEO/COO with mandatory remarks, as a new event — tell me if wrong.
+7. **Who greenlights?** `Assumed:` CEO or COO records it, referencing the approving platform — tell me if wrong.
 8. **Does Hold / Changes Requested pause the aging clock?** `Assumed:` aging continues but is reported separately as "On hold" — tell me if wrong.
-9. **Who may download scripts?** `Assumed:` current owner, prior reviewers of that pitch, Senior, CEO, CBO; Admin cannot — tell me if wrong.
-10. **Ratings**: `Assumed:` visible to Senior/CEO/CBO by default; each reviewer may add one rating per review event — tell me if wrong.
+9. **Who may download scripts?** `Assumed:` current owner, prior reviewers of that pitch, Senior, CEO, COO; Admin cannot — tell me if wrong.
+10. **Ratings**: `Assumed:` visible to Senior/CEO/COO by default; each reviewer may add one rating per review event — tell me if wrong.
 11. **Data retention** for rejected pitches and creator personal data (India DPDP Act, 2023). `Unknown:` retention periods — resolve with your legal counsel / CA; the system stores a configurable retention policy per record type.
 12. **Authentication**: `Assumed:` email + password + MFA. If Tamada Media uses Google Workspace, Google SSO would be simpler and stronger — tell me if wrong.
 13. **Hosting & budget**: `Assumed:` AWS Mumbai — see §7.

@@ -52,7 +52,7 @@ describe("default workflow configuration", () => {
     for (const r of rejects) expect(r.requiresRejectionReason).toBe(true);
   });
   it("only executive roles can send to platform, approve or greenlight", () => {
-    for (const r of rules.filter((x) => x.isApproval)) expect(r.allowedRoleKeys).toEqual(["CEO", "CBO", "SUPER_ADMIN"]);
+    for (const r of rules.filter((x) => x.isApproval)) expect(r.allowedRoleKeys).toEqual(["CEO", "COO", "SUPER_ADMIN"]);
   });
 });
 
@@ -81,7 +81,7 @@ describe("authorizeTransition", () => {
     expect(code(() => authorizeTransition(VIEWER, reject, pitch({ currentOwnerId: "v" }), settings))).toBe("FORBIDDEN");
     expect(code(() => authorizeTransition(ADMIN, reject, pitch({ currentOwnerId: "adm" }), settings))).toBe("FORBIDDEN");
   });
-  it("employees cannot perform CEO/CBO actions even as owner", () => {
+  it("employees cannot perform CEO/COO actions even as owner", () => {
     const p = pitch({ currentStageKey: "EXECUTIVE_REVIEW", currentOwnerId: "a" });
     expect(code(() => authorizeTransition(A, selectTransition(rules, p, { action: "SEND_TO_PLATFORM" }), p, settings))).toBe("FORBIDDEN");
   });
@@ -113,7 +113,7 @@ describe("validateRecipient", () => {
   const facts = (id: string, role: RoleKey, clearance: Actor["clearance"] = "CONFIDENTIAL") =>
     ({ id, active: true, roles: new Set([role]), permissions: new Set(DEFAULT_ROLE_MATRIX[role].permissions), clearance, participantReasons: [] });
   const input = { action: "FORWARD" as const, expectedVersion: 1, recipientId: "x", remarks: "r" };
-  it("executive level only accepts CEO/CBO recipients", () => {
+  it("executive level only accepts CEO/COO recipients", () => {
     expect(code(() => validateRecipient(f, input, pitch(), A, facts("b", "EMPLOYEE")))).toBe("INVALID_RECIPIENT");
     expect(code(() => validateRecipient(f, input, pitch(), A, facts("ceo", "CEO", "RESTRICTED")))).toBe("OK");
   });

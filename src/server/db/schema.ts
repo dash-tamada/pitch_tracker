@@ -347,7 +347,7 @@ export const workflowEvents = pgTable("workflow_events", {
   rejectionCategoryKey: varchar("rejection_category_key", { length: 60 }),
   rejectionReason: text("rejection_reason"),
   changeTypeKeys: text("change_type_keys").array(),
-  approvalType: varchar("approval_type", { length: 40 }),         // CEO | CBO
+  approvalType: varchar("approval_type", { length: 40 }),         // CEO | COO
   recommendedPlatformIds: uuid("recommended_platform_ids").array(),
   platformId: uuid("platform_id").references(() => platforms.id),
   metadata: jsonb("metadata").notNull().default(sql`'{}'::jsonb`),

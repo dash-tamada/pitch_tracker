@@ -1,6 +1,6 @@
 # Pitch Tracker — Story Pipeline Control Center
 
-Internal system for Tamada Media to track every story from submission through review, CEO/CBO approval, OTT platform pitching, development and production.
+Internal system for Tamada Media to track every story from submission through review, CEO/COO approval, OTT platform pitching, development and production.
 
 **Every story must have a traceable journey:** who has it → at which level → since when → what they said → what was decided → what happens next.
 
@@ -77,13 +77,13 @@ BOOTSTRAP_ADMIN_PASSWORD='choose-a-strong-one' npm run admin:create -- you@tamad
 ```
 PowerShell: `$env:BOOTSTRAP_ADMIN_PASSWORD='…'; npm run admin:create -- you@tamadamedia.com "Your Name"; Remove-Item env:BOOTSTRAP_ADMIN_PASSWORD`
 
-Super Admin, Admin, CEO and CBO must set up an authenticator app (TOTP) before they can act.
+Super Admin, Admin, CEO and COO must set up an authenticator app (TOTP) before they can act.
 
 ### 6. Optional demo data (development/staging only)
 ```bash
 DEMO_USER_PASSWORD='Demo-Something-2026!' npm run db:seed:demo
 ```
-Creates Employee A/B/C, Senior Employee, CEO, CBO, Admin, Viewer (`<name>@demo.example.test`), 13 fictional creators, and pitches in several stages — including **The Last Journey** taken all the way to Production through the real workflow engine. The script refuses to run when `APP_ENV=production`.
+Creates Employee A/B/C, Senior Employee, CEO, COO, Admin, Viewer (`<name>@demo.example.test`), 13 fictional creators, and pitches in several stages — including **The Last Journey** taken all the way to Production through the real workflow engine. The script refuses to run when `APP_ENV=production`.
 
 ### 7. Run
 ```bash
@@ -118,7 +118,7 @@ Production deploy order: build → `npm run db:migrate` with the migration role 
 | 2 | Creator management, profiles, projects, ratings UI | Next |
 | 3 | Pitch management UI, private file storage, script versioning, images | |
 | 4 | Assignments, forward/accept/reject/request-changes UI, remarks, timeline, "Where is this story now?" | Engine done; UI next |
-| 5 | CEO/CBO management views | |
+| 5 | CEO/COO management views | |
 | 6 | Platform database, contacts, platform pitches, responses, follow-ups | |
 | 7 | Development and production trackers | |
 | 8 | Dashboard, analytics, global search, filters, reports, exports | |

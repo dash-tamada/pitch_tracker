@@ -79,7 +79,7 @@ export const actionInputSchema = z.object({
 export type ActionInput = z.infer<typeof actionInputSchema>;
 
 export const MIN_REJECTION_REASON = 10;
-export const EXECUTIVE_ROLE_KEYS = ["CEO", "CBO"] as const;
+export const EXECUTIVE_ROLE_KEYS = ["CEO", "COO"] as const;
 
 /** Choose the single transition matching (current stage, action[, target]). */
 export function selectTransition(rules: readonly TransitionRule[], pitch: PitchState, input: Pick<ActionInput, "action" | "toStageKey">): TransitionRule {

@@ -39,7 +39,7 @@ export const DEFAULT_STAGES: StageDef[] = [
   { key: "INITIAL_REVIEW", name: "Initial Review", category: "REVIEW", badge: "under_review" },
   { key: "INTERNAL_REVIEW", name: "Internal Review", category: "REVIEW", badge: "under_review" },
   { key: "SENIOR_REVIEW", name: "Senior Review", category: "REVIEW", badge: "under_review" },
-  { key: "EXECUTIVE_REVIEW", name: "CEO / CBO Review", category: "EXECUTIVE", badge: "awaiting_approval" },
+  { key: "EXECUTIVE_REVIEW", name: "CEO / COO Review", category: "EXECUTIVE", badge: "awaiting_approval" },
   { key: "CHANGES_REQUESTED", name: "Changes Requested", category: "PAUSED", badge: "changes_requested" },
   { key: "ON_HOLD", name: "On Hold", category: "PAUSED", badge: "on_hold" },
   { key: "REJECTED", name: "Rejected", category: "TERMINAL", badge: "rejected", isTerminal: true, requiresOwner: false },
@@ -57,16 +57,16 @@ export const DEFAULT_STAGES: StageDef[] = [
 ];
 
 const REVIEW_STAGES = ["INITIAL_REVIEW", "INTERNAL_REVIEW", "SENIOR_REVIEW"] as const;
-const EXEC: RoleKey[] = ["CEO", "CBO", "SUPER_ADMIN"];
-const SENIOR_UP: RoleKey[] = ["SENIOR_EMPLOYEE", "CEO", "CBO", "SUPER_ADMIN"];
-const REVIEWERS: RoleKey[] = ["EMPLOYEE", "SENIOR_EMPLOYEE", "CEO", "CBO", "SUPER_ADMIN"];
+const EXEC: RoleKey[] = ["CEO", "COO", "SUPER_ADMIN"];
+const SENIOR_UP: RoleKey[] = ["SENIOR_EMPLOYEE", "CEO", "COO", "SUPER_ADMIN"];
+const REVIEWERS: RoleKey[] = ["EMPLOYEE", "SENIOR_EMPLOYEE", "CEO", "COO", "SUPER_ADMIN"];
 
 const LEVEL_ORDER = ["INITIAL_REVIEW", "INTERNAL_REVIEW", "SENIOR_REVIEW", "EXECUTIVE_REVIEW"] as const;
 const RECIPIENTS_FOR: Record<(typeof LEVEL_ORDER)[number], RoleKey[]> = {
   INITIAL_REVIEW: REVIEWERS,
   INTERNAL_REVIEW: REVIEWERS,
   SENIOR_REVIEW: SENIOR_UP,
-  EXECUTIVE_REVIEW: ["CEO", "CBO"],
+  EXECUTIVE_REVIEW: ["CEO", "COO"],
 };
 
 function reviewTransitions(): TransitionDef[] {
@@ -76,7 +76,7 @@ function reviewTransitions(): TransitionDef[] {
     const ownerRule = isExec ? { roles: EXEC, requiresCurrentOwner: false } : {};
 
     if (!isExec) {
-      // FORWARD: same level or any higher level (Employee → Senior / CEO / CBO)
+      // FORWARD: same level or any higher level (Employee → Senior / CEO / COO)
       for (const target of LEVEL_ORDER.slice(i)) {
         out.push({ from: stage, to: target, action: "FORWARD", permission: "pitch.forward",
           requiresRemarks: true, requiresRecipient: true, recipientRoles: RECIPIENTS_FOR[target] });
@@ -104,7 +104,7 @@ export const DEFAULT_TRANSITIONS: TransitionDef[] = [
   { from: "CHANGES_REQUESTED", to: null, action: "RESUME", permission: "pitch.request_changes", requiresRemarks: true },
   { from: "ON_HOLD", to: null, action: "RESUME", permission: "pitch.hold", requiresRemarks: true },
 
-  // CEO / CBO decisions
+  // CEO / COO decisions
   { from: "EXECUTIVE_REVIEW", to: "APPROVED_FOR_PLATFORM", action: "SEND_TO_PLATFORM", permission: "pitch.send_to_platform",
     roles: EXEC, requiresCurrentOwner: false, requiresRemarks: true, requiresRecipient: true, isApproval: true },
   { from: "EXECUTIVE_REVIEW", to: "APPROVED_FOR_PLATFORM", action: "APPROVE", permission: "pitch.approve_executive",
@@ -133,7 +133,7 @@ export const DEFAULT_TRANSITIONS: TransitionDef[] = [
   ...REVIEW_STAGES.map<TransitionDef>((s) => ({ from: s, to: s, action: "ASSIGN", permission: "pitch.forward",
       roles: SENIOR_UP, requiresCurrentOwner: false, requiresRecipient: true, requiresRemarks: true })),
   { from: "EXECUTIVE_REVIEW", to: "EXECUTIVE_REVIEW", action: "ASSIGN", permission: "pitch.forward",
-      roles: EXEC, requiresCurrentOwner: false, requiresRecipient: true, recipientRoles: ["CEO", "CBO"], requiresRemarks: true },
+      roles: EXEC, requiresCurrentOwner: false, requiresRecipient: true, recipientRoles: ["CEO", "COO"], requiresRemarks: true },
 
   // Development & production
   { from: "READY_FOR_DEVELOPMENT", to: "DEVELOPMENT", action: "START_DEVELOPMENT", permission: "development.manage",

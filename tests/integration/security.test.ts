@@ -62,7 +62,7 @@ describe("workflow integrity", () => {
     }
   });
   it("CEO cannot act at an employee's review level unless configured", async () => {
-    expect(await errCode(performAction(db, team.ceo.actor, pitchId, { action: "ACCEPT", expectedVersion: 2, remarks: "x", recipientId: team.cbo.id })))
+    expect(await errCode(performAction(db, team.ceo.actor, pitchId, { action: "ACCEPT", expectedVersion: 2, remarks: "x", recipientId: team.coo.id })))
       .toBe("NOT_CURRENT_OWNER");
   });
   it("mass assignment: extra fields are rejected", async () => {
@@ -89,15 +89,15 @@ describe("workflow integrity", () => {
     await step({ action: "FORWARD", toStageKey: "EXECUTIVE_REVIEW", recipientId: team.ceo.id, remarks: "up" }, team.employeeB);
     expect(await errCode(performAction(db, team.ceo.actor, own.id, { action: "SEND_TO_PLATFORM", expectedVersion: v, recipientId: team.senior.id, remarks: "mine" })))
       .toBe("SELF_APPROVAL_BLOCKED");
-    // the CBO can approve it instead
-    expect(await errCode(performAction(db, team.cbo.actor, own.id, { action: "SEND_TO_PLATFORM", expectedVersion: v, recipientId: team.senior.id, remarks: "ok" })))
+    // the COO can approve it instead
+    expect(await errCode(performAction(db, team.coo.actor, own.id, { action: "SEND_TO_PLATFORM", expectedVersion: v, recipientId: team.senior.id, remarks: "ok" })))
       .toBe("OK");
   });
   it("employee cannot create a pitch above their clearance and lose access to it", async () => {
     expect(await errCode(makePitch(db, team.employeeA, { confidentiality: "RESTRICTED" }))).toBe("VALIDATION");
   });
   it("exec session without MFA cannot act", async () => {
-    const noMfa = { ...team.cbo.actor, mfaSatisfied: false };
+    const noMfa = { ...team.coo.actor, mfaSatisfied: false };
     expect(await errCode(performAction(db, noMfa, pitchId, { action: "HOLD", expectedVersion: 2, remarks: "x" }))).toBe("MFA_REQUIRED");
   });
 });

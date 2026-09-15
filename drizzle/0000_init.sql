@@ -1,5 +1,14 @@
-CREATE EXTENSION IF NOT EXISTS pgcrypto;--> statement-breakpoint
-CREATE EXTENSION IF NOT EXISTS pg_trgm;--> statement-breakpoint
+DO $$
+BEGIN
+  -- Supabase keeps extensions in the "extensions" schema (not exposed by its Data API); plain PostgreSQL uses the default.
+  IF EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'extensions') THEN
+    CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA extensions;
+    -- Make gin_trgm_ops resolvable for the trigram indexes below, whatever the migrating role's default search_path is.
+    PERFORM set_config('search_path', 'public, extensions', true);
+  ELSE
+    CREATE EXTENSION IF NOT EXISTS pg_trgm;
+  END IF;
+END $$;--> statement-breakpoint
 CREATE TYPE "public"."document_access_action" AS ENUM('VIEW', 'DOWNLOAD');--> statement-breakpoint
 CREATE TYPE "public"."confidentiality_level" AS ENUM('STANDARD', 'CONFIDENTIAL', 'RESTRICTED');--> statement-breakpoint
 CREATE TYPE "public"."creator_type" AS ENUM('WRITER', 'DIRECTOR', 'WRITER_DIRECTOR', 'PRODUCER', 'CREATOR', 'OTHER');--> statement-breakpoint

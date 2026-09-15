@@ -98,3 +98,20 @@ export function ok(body: unknown, status = 200): Response {
 export function sessionCookieOptions(expires: Date) {
   return { httpOnly: true, secure: isProd(), sameSite: "lax" as const, path: "/", expires };
 }
+
+/** Query string → plain object (single values only; repeated keys become arrays). */
+export function queryObject(req: NextRequest): Record<string, string | string[]> {
+  const out: Record<string, string | string[]> = {};
+  for (const [k, v] of req.nextUrl.searchParams) {
+    const prev = out[k];
+    out[k] = prev === undefined ? v : Array.isArray(prev) ? [...prev, v] : [prev, v];
+  }
+  return out;
+}
+
+export function uuidParam(id: string, what = "Record"): string {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) throw new AppError("NOT_FOUND", `${what} not found.`);
+  return id.toLowerCase();
+}
+
+export { requirePermission as requirePermissionRoute } from "@/server/modules/authz/policy";

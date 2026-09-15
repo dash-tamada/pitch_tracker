@@ -342,6 +342,14 @@ Error shape: `{ "error": { "code": "VALIDATION", "message": "Rejection reason is
 
 ## 7. Cloud architecture
 
+**Chosen deployment (Sep 2026): Vercel (`bom1` Mumbai) + Supabase (`ap-south-1` Mumbai)** — PostgreSQL 17 and a private Storage bucket. Steps and current state: `docs/DEPLOYMENT.md`.
+
+- The app talks to Supabase only from the server: PostgreSQL as the least-privilege `pitch_app` role through the pooler with certificate verification, and Storage REST with a server-only secret key. The Data API is locked out (all grants to `anon`/`authenticated`/`service_role` revoked, RLS on every table with a `pitch_app`-only policy).
+- Background work runs as a daily Vercel Cron call to `/api/cron/run`; there is no persistent worker, which is why malware scanning is not yet built (it needs an external scanning service or a small worker).
+- Uploads go browser → one-time signed URL → quarantine key; the server validates content before moving the object to its final key.
+
+The original AWS reference design below remains a valid path if the organisation later needs a private network, a scanning worker, or AWS-native backups.
+
 `Assumed:` hosting in an India region for data-residency and latency — tell me if wrong. Recommended reference deployment (AWS `ap-south-1` Mumbai); equivalents on GCP/Azure work the same way.
 
 ```

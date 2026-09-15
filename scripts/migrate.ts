@@ -5,11 +5,12 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import pg from "pg";
+import { connectionConfig } from "../src/server/db/ssl";
 
 async function main(): Promise<void> {
   const url = process.env.MIGRATION_DATABASE_URL;
   if (!url) throw new Error("MIGRATION_DATABASE_URL is not set");
-  const pool = new pg.Pool({ connectionString: url, max: 1 });
+  const pool = new pg.Pool({ ...connectionConfig(url), max: 1 });
   try {
     await migrate(drizzle(pool), { migrationsFolder: "./drizzle" });
     console.log("Migrations applied.");

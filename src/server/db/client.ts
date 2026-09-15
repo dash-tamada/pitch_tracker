@@ -1,6 +1,7 @@
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import * as schema from "./schema";
+import { connectionConfig } from "./ssl";
 
 export type Db = NodePgDatabase<typeof schema>;
 /** A database handle or an open transaction — services accept either. */
@@ -8,7 +9,7 @@ export type DbOrTx = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 export function createDb(connectionString: string, max = 10): { db: Db; pool: pg.Pool } {
   const pool = new pg.Pool({
-    connectionString,
+    ...connectionConfig(connectionString),
     max,
     idleTimeoutMillis: 30_000,
     statement_timeout: 15_000,

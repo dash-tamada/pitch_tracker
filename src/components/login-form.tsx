@@ -31,6 +31,7 @@ export function LoginForm({ initialStep }: { initialStep: "password" | "mfa" }) 
     try {
       if (step === "password") {
         const r = await post("/api/v1/auth/login", { email: form.get("email"), password: form.get("password") });
+        if (r.mfaEnrolmentRequired) { window.location.assign("/mfa-setup"); return; }
         if (r.mfaRequired) { setStep("mfa"); return; }
       } else {
         await post("/api/v1/auth/mfa/verify", { code: form.get("code") });
@@ -58,6 +59,7 @@ export function LoginForm({ initialStep }: { initialStep: "password" | "mfa" }) 
         </label>
       )}
       <button className="btn" disabled={busy}>{busy ? "Please wait…" : "Continue"}</button>
+      {step === "password" && <p className="subtle"><a href="/forgot-password">Forgot password?</a></p>}
     </form>
   );
 }

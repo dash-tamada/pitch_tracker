@@ -15,6 +15,34 @@
       "when": 1789463419874,
       "tag": "0001_integrity",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1789465214184,
+      "tag": "0002_supabase_hardening",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1789465919780,
+      "tag": "0003_uploads",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1789468802552,
+      "tag": "0004_storage_bucket",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1789469659226,
+      "tag": "0005_extensions_usage",
+      "breakpoints": true
     }
   ]
 }

@@ -12,6 +12,8 @@ import { hashPassword, passwordPolicyErrors } from "../src/server/modules/auth/p
 import { createCreator } from "../src/server/modules/creators/service";
 import { createPitch } from "../src/server/modules/pitches/service";
 import { performAction } from "../src/server/modules/workflow/engine";
+import { recordPlatformPitch, recordPlatformResponse } from "../src/server/modules/platforms/service";
+import { advanceProduction, greenlight, startDevelopment } from "../src/server/modules/production/service";
 
 if (process.env.APP_ENV === "production" || process.env.NODE_ENV === "production") {
   console.error("Refusing to load demo data into production.");
@@ -96,13 +98,17 @@ async function lastJourney(db: Db, creatorId: string, actor: (k: string) => Prom
   await step("employee.b", { action: "FORWARD", toStageKey: "INTERNAL_REVIEW", recipientId: ids["employee.c"], remarks: "Please review V2." });
   await step("employee.c", { action: "FORWARD", toStageKey: "EXECUTIVE_REVIEW", recipientId: ids["coo"], remarks: "Ready for COO." });
   await step("coo", { action: "SEND_TO_PLATFORM", recipientId: ids["senior"], remarks: "Take it to Netflix.", recommendedPlatformIds: [netflix] });
-  await step("senior", { action: "RECORD_PLATFORM_PITCH", platformId: netflix, remarks: "Deck and Script V2 sent." });
-  await step("senior", { action: "MARK_PLATFORM_APPROVED", platformId: netflix, remarks: "Netflix approved the second draft." });
+  const pp = await recordPlatformPitch(db, await actor("senior"), p.id, { expectedVersion: v, platformId: netflix, pitchDate: "2026-09-01", methodKey: "EMAIL",
+    materialsSent: ["Pitch deck", "Script"], remarks: "Deck and Script V2 sent.", followUpOn: "2026-09-08" });
+  v = pp.version;
+  await recordPlatformResponse(db, await actor("senior"), pp.platformPitchId, { status: "INTERESTED", responseDate: "2026-09-03" });
+  await recordPlatformResponse(db, await actor("senior"), pp.platformPitchId, { status: "SECOND_DRAFT_REQUESTED", responseDate: "2026-09-05", notes: "Asked for a tighter episode 3." });
+  v = (await recordPlatformResponse(db, await actor("senior"), pp.platformPitchId, { status: "APPROVED", responseDate: "2026-09-08", notes: "Netflix approved the second draft.", expectedVersion: v })).version!;
   await step("coo", { action: "MARK_READY_FOR_DEVELOPMENT" });
-  await step("coo", { action: "START_DEVELOPMENT", recipientId: ids["senior"] });
-  await step("ceo", { action: "GREENLIGHT", recipientId: ids["senior"], remarks: "Greenlit." });
-  await step("senior", { action: "ADVANCE" });
-  await step("senior", { action: "ADVANCE" });
+  v = (await startDevelopment(db, await actor("coo"), p.id, { expectedVersion: v, ownerId: ids["senior"]!, startDate: "2026-09-09" })).version;
+  v = (await greenlight(db, await actor("ceo"), p.id, { expectedVersion: v, productionOwnerId: ids["senior"]!, remarks: "Greenlit.", productionCompany: "Tamada Media" })).version;
+  v = (await advanceProduction(db, await actor("senior"), p.id, { expectedVersion: v })).version;
+  await advanceProduction(db, await actor("senior"), p.id, { expectedVersion: v });
 }
 
 main().catch((e: unknown) => { console.error(e instanceof Error ? ((e.cause as { message?: string } | undefined)?.message ?? e.message.split("\n")[0]!.slice(0, 200)) : "unknown"); process.exit(1); });

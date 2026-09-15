@@ -1,7 +1,7 @@
 /** Abuse cases against the real database with the least-privilege app role. */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { and, eq, sql } from "drizzle-orm";
-import { auditLogs, pitchParticipants, pitches, sessions, users, workflowEvents } from "@/server/db/schema";
+import { auditLogs, pitchParticipants, pitches, platforms, sessions, users, workflowEvents } from "@/server/db/schema";
 import { login, logout, resolveSession, LOCKOUT_THRESHOLD, SESSION_IDLE_MS } from "@/server/modules/auth/service";
 import { canViewPitch, pitchVisibilityCondition } from "@/server/modules/authz/policy";
 import { findCreatorMatches, createCreator } from "@/server/modules/creators/service";
@@ -60,6 +60,16 @@ describe("workflow integrity", () => {
     for (const action of ["SEND_TO_PLATFORM", "GREENLIGHT", "MARK_PLATFORM_APPROVED", "ADVANCE"]) {
       expect(await errCode(performAction(db, team.employeeA.actor, pitchId, { action, expectedVersion: 2, remarks: "x" }))).toBe("TRANSITION_NOT_ALLOWED");
     }
+  });
+  it("tracker-bound steps cannot be taken through the generic action endpoint, even at the right stage", async () => {
+    const p = await makePitch(db, team.employeeA, { title: "Tracker bypass" });
+    let v = p.version;
+    const step = async (who: typeof team.employeeA, b: Record<string, unknown>) => { v = (await performAction(db, who.actor, p.id, { expectedVersion: v, ...b })).version; };
+    await step(team.employeeA, { action: "ASSIGN", recipientId: team.employeeA.id });
+    await step(team.employeeA, { action: "FORWARD", toStageKey: "EXECUTIVE_REVIEW", recipientId: team.ceo.id, remarks: "up" });
+    await step(team.ceo, { action: "SEND_TO_PLATFORM", recipientId: team.senior.id, remarks: "go" });
+    const netflix = (await db.select().from(platforms)).find((x) => x.name === "Netflix")!.id;
+    expect(await errCode(performAction(db, team.senior.actor, p.id, { action: "RECORD_PLATFORM_PITCH", expectedVersion: v, platformId: netflix }))).toBe("TRANSITION_NOT_ALLOWED");
   });
   it("CEO cannot act at an employee's review level unless configured", async () => {
     expect(await errCode(performAction(db, team.ceo.actor, pitchId, { action: "ACCEPT", expectedVersion: 2, remarks: "x", recipientId: team.coo.id })))
@@ -127,9 +137,9 @@ describe("injection & PII", () => {
   it("employees see masked mobile/email; senior sees full", async () => {
     const [emp] = await findCreatorMatches(db, team.employeeA.actor, { mobile: "9876512345" });
     const [sen] = await findCreatorMatches(db, team.senior.actor, { mobile: "9876512345" });
-    expect(emp!.mobileE164).toBe("+91 XXXXX 12345");
-    expect(emp!.emailNormalized).toBe("r***@example.com");
-    expect(sen!.mobileE164).toBe("+919876512345");
+    expect(emp!.mobile).toBe("+91 XXXXX 12345");
+    expect(emp!.email).toBe("r***@example.com");
+    expect(sen!.mobile).toBe("+919876512345");
   });
   it("duplicate creator by mobile in another format is refused", async () => {
     expect(await errCode(createCreator(db, team.senior.actor, { creatorType: "DIRECTOR", fullName: "Someone Else", mobile: "+91 98765 12345" }))).toBe("CONFLICT");

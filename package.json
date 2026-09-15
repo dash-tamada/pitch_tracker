@@ -18,7 +18,8 @@
     "db:migrate": "tsx scripts/migrate.ts",
     "db:seed": "tsx scripts/seed.ts",
     "db:seed:demo": "tsx scripts/seed-demo.ts",
-    "admin:create": "tsx scripts/create-super-admin.ts"
+    "admin:create": "tsx scripts/create-super-admin.ts",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@node-rs/argon2": "2.2.1",
@@ -30,6 +31,7 @@
     "zod": "4.6.5"
   },
   "devDependencies": {
+    "@playwright/test": "1.56.1",
     "@types/node": "22.19.0",
     "@types/pg": "8.15.6",
     "@types/react": "19.3.0",

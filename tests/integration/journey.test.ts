@@ -5,7 +5,9 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { asc, eq } from "drizzle-orm";
-import { pitches, ratings, workflowEvents, notifications, auditLogs } from "@/server/db/schema";
+import { pitches, ratings, workflowEvents, notifications, auditLogs, platformResponses, platformPitches, productionProjects, developmentProjects } from "@/server/db/schema";
+import { recordPlatformPitch, recordPlatformResponse } from "@/server/modules/platforms/service";
+import { advanceProduction, greenlight, startDevelopment } from "@/server/modules/production/service";
 import { getAvailableActions, loadStages, performAction, getTimeline } from "@/server/modules/workflow/engine";
 import { foldEvents } from "@/server/modules/workflow/rules";
 import { closeDb, makePitch, makeTeam, platformId, testDb, type TestUser } from "../helpers/db";
@@ -40,13 +42,28 @@ describe("The Last Journey — full pipeline", () => {
     await act(team.employeeB, { action: "FORWARD", toStageKey: "INTERNAL_REVIEW", recipientId: team.employeeC.id, remarks: "Over to C" });
     await act(team.employeeC, { action: "FORWARD", toStageKey: "EXECUTIVE_REVIEW", recipientId: team.coo.id, remarks: "Ready for COO" });
     await act(team.coo, { action: "SEND_TO_PLATFORM", recipientId: team.senior.id, remarks: "Pitch to Netflix first", recommendedPlatformIds: [netflix] });
-    await act(team.senior, { action: "RECORD_PLATFORM_PITCH", platformId: netflix, remarks: "Deck + Script V2 sent" });
-    await act(team.senior, { action: "MARK_PLATFORM_APPROVED", platformId: netflix, remarks: "Netflix approved second draft" });
+    const pp = await recordPlatformPitch(db, team.senior.actor, pitchId, { expectedVersion: version, platformId: netflix, pitchDate: "2026-09-10",
+      methodKey: "EMAIL", materialsSent: ["Pitch deck", "Script V2"], remarks: "Deck + Script V2 sent", followUpOn: "2026-09-17" });
+    version = pp.version;
+    await recordPlatformResponse(db, team.senior.actor, pp.platformPitchId, { status: "INTERESTED", responseDate: "2026-09-12" });
+    await recordPlatformResponse(db, team.senior.actor, pp.platformPitchId, { status: "SECOND_DRAFT_REQUESTED", responseDate: "2026-09-13", notes: "Tighten episode 3" });
+    const appr = await recordPlatformResponse(db, team.senior.actor, pp.platformPitchId, { status: "APPROVED", responseDate: "2026-09-14", notes: "Netflix approved second draft", expectedVersion: version });
+    version = appr.version!;
     await act(team.coo, { action: "MARK_READY_FOR_DEVELOPMENT" });
-    await act(team.coo, { action: "START_DEVELOPMENT", recipientId: team.senior.id });
-    await act(team.ceo, { action: "GREENLIGHT", recipientId: team.senior.id, remarks: "Greenlit with Netflix" });
-    for (let i = 0; i < 5; i++) await act(team.senior, { action: "ADVANCE" });
+    version = (await startDevelopment(db, team.coo.actor, pitchId, { expectedVersion: version, ownerId: team.senior.id, startDate: "2026-09-15" })).version;
+    version = (await greenlight(db, team.ceo.actor, pitchId, { expectedVersion: version, productionOwnerId: team.senior.id, remarks: "Greenlit with Netflix", budgetRupees: 45_000_000 })).version;
+    for (let i = 0; i < 4; i++) version = (await advanceProduction(db, team.senior.actor, pitchId, { expectedVersion: version })).version;
+    version = (await advanceProduction(db, team.senior.actor, pitchId, { expectedVersion: version, actualRelease: "2026-09-15" })).version;
 
+    // platform response history is preserved, never overwritten
+    const history = await db.select({ status: platformResponses.status }).from(platformResponses).where(eq(platformResponses.platformPitchId, pp.platformPitchId)).orderBy(platformResponses.createdAt);
+    expect(history.map((h) => h.status)).toEqual(["PITCHED", "INTERESTED", "SECOND_DRAFT_REQUESTED", "APPROVED"]);
+    const [ppRow] = await db.select().from(platformPitches).where(eq(platformPitches.id, pp.platformPitchId));
+    expect(ppRow!.currentStatus).toBe("APPROVED");
+    const [dev] = await db.select().from(developmentProjects).where(eq(developmentProjects.pitchId, pitchId));
+    expect(dev).toMatchObject({ status: "DEVELOPMENT_COMPLETED", platformPitchId: pp.platformPitchId });
+    const [prod] = await db.select().from(productionProjects).where(eq(productionProjects.pitchId, pitchId));
+    expect(prod).toMatchObject({ status: "RELEASED", platformId: netflix, actualRelease: "2026-09-15", budgetPaise: 4_500_000_000n });
     const [p] = await db.select().from(pitches).where(eq(pitches.id, pitchId));
     expect(p!.currentStageKey).toBe("RELEASED");
     expect(p!.currentOwnerId).toBe(team.senior.id);
@@ -85,10 +102,11 @@ describe("The Last Journey — full pipeline", () => {
 
   it("notified each recipient and audited each action", async () => {
     const n = await db.select().from(notifications).where(eq(notifications.pitchId, pitchId));
-    expect(new Set(n.map((x) => x.userId))).toEqual(new Set([team.employeeB.id, team.employeeC.id, team.coo.id, team.senior.id]));
+    expect(new Set(n.map((x) => x.userId))).toEqual(new Set([team.employeeB.id, team.employeeC.id, team.coo.id, team.senior.id, team.employeeA.id])); // A submitted it: told about approval + greenlight
     for (const x of n) expect(x.title).not.toMatch(/synopsis|script text/i);
     const audits = await db.select().from(auditLogs).where(eq(auditLogs.resourceId, pitchId));
-    expect(audits.length).toBe(18); // pitch.created + 17 workflow actions
+    expect(audits.filter((a) => a.action.startsWith("workflow.")).length).toBe(17);
+    expect(audits.map((a) => a.action)).toEqual(expect.arrayContaining(["pitch.created", "platform.pitch_recorded", "platform.response_recorded", "development.started", "production.greenlit", "production.status_changed"]));
   });
 
   it("released pitch offers no further actions", async () => {

@@ -43,7 +43,8 @@ export const workflowAction = pgEnum("workflow_action", [
 export const participantReason = pgEnum("participant_reason", [
   "CREATED", "ASSIGNED", "REVIEWED", "PLATFORM_OWNER", "DEVELOPMENT_OWNER", "PRODUCTION_OWNER", "GRANTED",
 ]);
-export const scanStatus = pgEnum("scan_status", ["PENDING", "CLEAN", "INFECTED", "FAILED"]);
+export const scanStatus = pgEnum("scan_status", ["PENDING", "CLEAN", "INFECTED", "FAILED", "NOT_SCANNED"]);
+export const uploadKind = pgEnum("upload_kind", ["DOCUMENT", "IMAGE", "CREATOR_PHOTO"]);
 export const accessAction = pgEnum("document_access_action", ["VIEW", "DOWNLOAD"]);
 export const platformStatus = pgEnum("platform_status", [
   "NOT_YET_PITCHED", "PITCHED", "AWAITING_RESPONSE", "INTERESTED", "MEETING_REQUESTED", "REQUESTED_CHANGES",
@@ -651,3 +652,32 @@ export const pitchCodeCounters = pgTable("pitch_code_counters", {
   year: smallint("year").primaryKey(),
   lastValue: integer("last_value").notNull().default(0),
 });
+
+/**
+ * A server-issued permission to upload exactly one object to a server-chosen quarantine key.
+ * Nothing becomes downloadable until /complete validates the bytes and records a version.
+ */
+export const uploadIntents = pgTable("upload_intents", {
+  id: id(),
+  kind: uploadKind("kind").notNull(),
+  pitchId: uuid("pitch_id").references(() => pitches.id),
+  documentId: uuid("document_id").references(() => documents.id),   // set when uploading a new version
+  creatorId: uuid("creator_id").references(() => creators.id),
+  categoryKey: varchar("category_key", { length: 60 }),
+  title: varchar("title", { length: 200 }),
+  caption: varchar("caption", { length: 300 }),
+  versionLabel: varchar("version_label", { length: 60 }),
+  notes: text("notes"),
+  originalFilename: varchar("original_filename", { length: 255 }).notNull(),
+  declaredSizeBytes: bigint("declared_size_bytes", { mode: "number" }).notNull(),
+  quarantineKey: text("quarantine_key").notNull(),
+  createdById: uuid("created_by_id").notNull().references(() => users.id),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  rejectedReason: varchar("rejected_reason", { length: 200 }),
+  createdAt: createdAt(),
+}, (t) => [
+  uniqueIndex("upload_intents_key_uq").on(t.quarantineKey),
+  index("upload_intents_user_idx").on(t.createdById, t.createdAt),
+  check("upload_intents_target_ck", sql`(${t.kind} = 'CREATOR_PHOTO' AND ${t.creatorId} IS NOT NULL) OR (${t.kind} <> 'CREATOR_PHOTO' AND ${t.pitchId} IS NOT NULL)`),
+]);

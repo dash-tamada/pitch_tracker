@@ -61,7 +61,14 @@ export async function getAvailableActions(db: Db, actor: Actor, pitchId: string)
   return availableActions(actor, rules, pitch, { allowSelfApproval: settings.allow_self_approval });
 }
 
-export async function performAction(db: Db, actor: Actor, pitchId: string, rawInput: unknown, ctx: RequestContext = {}) {
+/**
+ * Actions that must create tracker records (platform pitch, development/production project) in the same transaction.
+ * They can only be performed through their services, never through the generic action endpoint, so the workflow
+ * state and the tracker tables can never disagree.
+ */
+export const TRACKER_ACTIONS: ReadonlySet<string> = new Set(["RECORD_PLATFORM_PITCH", "MARK_PLATFORM_APPROVED", "START_DEVELOPMENT", "GREENLIGHT", "ADVANCE"]);
+
+export async function performAction(db: DbOrTx, actor: Actor, pitchId: string, rawInput: unknown, ctx: RequestContext = {}, opts: { viaTrackerService?: boolean } = {}) {
   const parsed = actionInputSchema.safeParse(rawInput);
   if (!parsed.success) {
     const fields: Record<string, string> = {};
@@ -69,6 +76,9 @@ export async function performAction(db: Db, actor: Actor, pitchId: string, rawIn
     throw new AppError("VALIDATION", "The request is not valid.", fields);
   }
   const input = parsed.data;
+  if (TRACKER_ACTIONS.has(input.action) && !opts.viaTrackerService) {
+    throw new AppError("TRANSITION_NOT_ALLOWED", "Use the platform, development or production form for this step.");
+  }
   if (!actor.mfaSatisfied) throw new AppError("MFA_REQUIRED", "Verify your second factor to continue.");
 
   try {
@@ -105,7 +115,23 @@ export async function performAction(db: Db, actor: Actor, pitchId: string, rawIn
         if (found.length !== platformIds.length) throw new AppError("VALIDATION", "Unknown or inactive platform.", { platformId: "Invalid" });
       }
 
-      const outcome = resolveOutcome(rule, pitch, input, stages);
+      let outcome = resolveOutcome(rule, pitch, input, stages);
+      let metadata: Record<string, unknown> = {};
+      // Executive approval mode ALL: both CEO and COO must approve. The first approval is recorded but the pitch stays
+      // in executive review until an approver holding the other executive role approves.
+      if (rule.isApproval && rule.fromStageKey === "EXECUTIVE_REVIEW" && settings.executive_approval_mode === "ALL") {
+        const actorExecRoles = ["CEO", "COO"].filter((r) => actor.roles.has(r));
+        const [entered] = await tx.select({ seq: workflowEvents.seq }).from(workflowEvents)
+          .where(and(eq(workflowEvents.pitchId, pitch.id), eq(workflowEvents.toStageKey, "EXECUTIVE_REVIEW"), sql`${workflowEvents.fromStageKey} IS DISTINCT FROM 'EXECUTIVE_REVIEW'`))
+          .orderBy(sql`${workflowEvents.seq} DESC`).limit(1);
+        const priorApprovals = await tx.select({ approvalType: workflowEvents.approvalType, actorId: workflowEvents.actorId }).from(workflowEvents)
+          .where(and(eq(workflowEvents.pitchId, pitch.id), inArray(workflowEvents.action, ["APPROVE", "SEND_TO_PLATFORM"]), sql`${workflowEvents.seq} > ${entered?.seq ?? 0}`));
+        const covered = new Set([...priorApprovals.filter((a) => a.actorId !== actor.userId).map((a) => a.approvalType), ...actorExecRoles]);
+        if (!(covered.has("CEO") && covered.has("COO"))) {
+          outcome = { toStageKey: pitch.currentStageKey, toOwnerId: pitch.currentOwnerId, pausedFromStageKey: pitch.pausedFromStageKey, stageChanged: false };
+          metadata = { partialApproval: true, awaiting: covered.has("CEO") ? "COO" : "CEO" };
+        }
+      }
       const seq = pitch.lastEventSeq + 1;
       const approvalType = rule.isApproval ? (["CEO", "COO"].find((r) => actor.roles.has(r)) ?? "DELEGATED") : null;
 
@@ -117,7 +143,7 @@ export async function performAction(db: Db, actor: Actor, pitchId: string, rawIn
         rejectionCategoryKey: rule.requiresRejectionReason ? input.rejectionCategoryKey! : null,
         rejectionReason: rule.requiresRejectionReason ? input.rejectionReason! : null,
         changeTypeKeys: input.changeTypeKeys ?? null, approvalType,
-        recommendedPlatformIds: input.recommendedPlatformIds ?? null, platformId: input.platformId ?? null,
+        recommendedPlatformIds: input.recommendedPlatformIds ?? null, platformId: input.platformId ?? null, metadata,
       }).returning();
 
       const updated = await tx.update(pitches).set({
@@ -162,6 +188,14 @@ export async function performAction(db: Db, actor: Actor, pitchId: string, rawIn
           pitchId: pitch.id,
         }).returning({ id: notifications.id });
         // Email job carries only the notification id — never script or synopsis content.
+        await tx.insert(jobOutbox).values({ type: "EMAIL_NOTIFICATION", payload: { notificationId: n!.id } });
+      }
+
+      // Submitter hears about executive decisions and rejections of the story they brought in.
+      if (["SEND_TO_PLATFORM", "APPROVE", "REJECT", "GREENLIGHT"].includes(input.action) && pitch.createdById !== actor.userId && !metadata.partialApproval) {
+        const verb = input.action === "REJECT" ? "was rejected" : input.action === "GREENLIGHT" ? "was greenlit" : `was approved by ${approvalType ?? "management"}`;
+        const [n] = await tx.insert(notifications).values({ userId: pitch.createdById, type: `workflow.${input.action.toLowerCase()}`,
+          title: `"${pitch.title}" ${verb}.`, pitchId: pitch.id }).returning({ id: notifications.id });
         await tx.insert(jobOutbox).values({ type: "EMAIL_NOTIFICATION", payload: { notificationId: n!.id } });
       }
 

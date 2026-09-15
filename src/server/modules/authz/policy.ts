@@ -64,10 +64,11 @@ export function pitchVisibilityCondition(actor: Actor, includeArchived = false):
   const allowed = (Object.keys(CLEARANCE_RANK) as Clearance[]).filter((c) => clearanceAllows(actor.clearance, c));
   const archived = includeArchived && can(actor, "pitch.restore") ? sql`true` : isNull(pitches.archivedAt);
 
+  // Explicitly qualified: Drizzle may render ${pitches.id} unqualified in some query positions.
   const participant = sql`EXISTS (SELECT 1 FROM pitch_participants pp
-      WHERE pp.pitch_id = ${pitches.id} AND pp.user_id = ${actor.userId})`;
+      WHERE pp.pitch_id = "pitches"."id" AND pp.user_id = ${actor.userId})`;
   const granted = sql`EXISTS (SELECT 1 FROM pitch_participants pp
-      WHERE pp.pitch_id = ${pitches.id} AND pp.user_id = ${actor.userId} AND pp.reason = 'GRANTED')`;
+      WHERE pp.pitch_id = "pitches"."id" AND pp.user_id = ${actor.userId} AND pp.reason = 'GRANTED')`;
 
   const withinClearance = sql`${pitches.confidentiality} IN (${sql.join(allowed.map((c) => sql`${c}`), sql`, `)})`;
   const involvement = can(actor, "pitch.view_all")

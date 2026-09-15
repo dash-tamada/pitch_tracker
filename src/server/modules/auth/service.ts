@@ -22,7 +22,7 @@ export const loginSchema = z.object({
   password: z.string().min(1).max(128),
 }).strict();
 
-export interface LoginResult { token: string; expiresAt: Date; mfaRequired: boolean }
+export interface LoginResult { token: string; expiresAt: Date; mfaRequired: boolean; mfaEnrolmentRequired: boolean }
 
 const INVALID = () => new AppError("INVALID_CREDENTIALS", "Email or password is incorrect.");
 
@@ -83,7 +83,7 @@ export async function login(db: Db, raw: unknown, ctx: RequestContext = {}, now 
     await tx.insert(loginAttempts).values({ emailHash, ip, success: true });
     await writeAudit(tx, { actorId: user.id, action: "auth.login", resourceType: "user", resourceId: user.id }, ctx);
   });
-  return { token, expiresAt, mfaRequired };
+  return { token, expiresAt, mfaRequired, mfaEnrolmentRequired: mfaRequired && !user.mfaEnabled };
 }
 
 export interface SessionInfo { sessionId: string; actor: Actor; mfaVerified: boolean }

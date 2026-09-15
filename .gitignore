@@ -21,3 +21,7 @@ uploads/
 coverage/
 .DS_Store
 Thumbs.db
+
+# TLS certificates and keys (never commit)
+*.crt
+*.key

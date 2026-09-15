@@ -19,7 +19,8 @@
     "db:seed": "tsx scripts/seed.ts",
     "db:seed:demo": "tsx scripts/seed-demo.ts",
     "admin:create": "tsx scripts/create-super-admin.ts",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "setup:local": "tsx scripts/setup-local.ts"
   },
   "dependencies": {
     "@node-rs/argon2": "2.2.1",

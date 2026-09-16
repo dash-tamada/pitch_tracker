@@ -231,11 +231,18 @@ export async function downloadVersion(db: Db, storage: StoragePort, actor: Actor
   return storage.createSignedReadUrl(row.v.storageKey, SIGNED_URL_TTL_SECONDS(), row.v.originalFilename);
 }
 
-/** Same checks and logging as downloadVersion, but the URL renders inline (a popup preview) instead of prompting to save. */
+/**
+ * Same checks and logging as downloadVersion, but returns enough (mime, filename) for the in-app viewer to
+ * pick a renderer, plus a signed URL that serves the bytes inline instead of prompting to save. The caller must
+ * NOT redirect the browser to this url directly — that hands the raw file to the browser's own native
+ * PDF/plugin viewer (full toolbar: print, download, etc). Fetch the bytes client-side instead and render them
+ * inside our own UI (see /documents/[id]/preview).
+ */
 export async function viewVersion(db: Db, storage: StoragePort, actor: Actor, versionId: string, ctx: RequestContext = {}) {
   const row = await loadDownloadableVersion(db, actor, versionId);
   await logDocumentAccess(db, actor, row, "VIEW", ctx);
-  return storage.createSignedReadUrl(row.v.storageKey, SIGNED_URL_TTL_SECONDS(), row.v.originalFilename, { inline: true, contentType: row.v.detectedMime });
+  const url = await storage.createSignedReadUrl(row.v.storageKey, SIGNED_URL_TTL_SECONDS(), row.v.originalFilename, { inline: true, contentType: row.v.detectedMime });
+  return { url, mime: row.v.detectedMime, filename: row.v.originalFilename };
 }
 
 /** "Who downloaded this script?" — management only. */

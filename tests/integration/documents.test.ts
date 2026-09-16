@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { auditLogs, documentAccessLogs, documentVersions } from "@/server/db/schema";
 import {
-  completeUpload, createUploadIntent, downloadVersion, listPitchDocuments, listPitchImages, pitchDownloadLog, setCurrentVersion,
+  completeUpload, createUploadIntent, downloadVersion, listPitchDocuments, listPitchImages, pitchDownloadLog, setCurrentVersion, viewVersion,
 } from "@/server/modules/documents/service";
 import { MemoryStorage } from "@/server/modules/storage/memory";
 import { performAction } from "@/server/modules/workflow/engine";
@@ -84,6 +84,10 @@ describe("confidential downloads", () => {
     expect(await code(createUploadIntent(db, storage, team.outsider.actor, { kind: "DOCUMENT", pitchId, categoryKey: "SCRIPT", title: "x", filename: "x.pdf", sizeBytes: 10 }))).toBe("NOT_FOUND");
     expect(await code(downloadVersion(db, storage, team.admin.actor, versionId))).toBe("FORBIDDEN"); // Admin has no document.download
     expect(await code(downloadVersion(db, storage, team.viewer.actor, versionId))).toBe("FORBIDDEN");
+    // viewVersion shares the same access check (loadDownloadableVersion) as downloadVersion — verify that hasn't drifted
+    expect(await code(viewVersion(db, storage, team.outsider.actor, versionId))).toBe("NOT_FOUND");
+    expect(await code(viewVersion(db, storage, team.admin.actor, versionId))).toBe("FORBIDDEN");
+    expect(await code(viewVersion(db, storage, team.viewer.actor, versionId))).toBe("FORBIDDEN");
   });
 
   it("every download is logged with who/when/version and returns a short-lived attachment URL", async () => {
@@ -101,6 +105,17 @@ describe("confidential downloads", () => {
     const log = await pitchDownloadLog(db, team.senior.actor, pitchId);
     expect(log[0]).toMatchObject({ userName: "Employee B", versionNo: 2, title: "Script" });
     expect(await code(pitchDownloadLog(db, team.employeeA.actor, pitchId))).toBe("FORBIDDEN");
+  });
+
+  it("viewing (in-app preview) is logged separately from downloading and reports the file's real mime type", async () => {
+    const [doc] = await listPitchDocuments(db, team.employeeA.actor, pitchId);
+    const v = doc!.versions.find((x) => x.versionNo === 2)!; // last-journey-v2.docx
+    const { url, mime, filename } = await viewVersion(db, storage, team.employeeB.actor, v.id, { ip: "10.2.2.3", userAgent: "vitest" });
+    expect(mime).toBe("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    expect(filename).toBe("last-journey-v2.docx");
+    expect(storage.read(url.split("/").pop()!)).toMatchObject({ name: "last-journey-v2.docx", inline: true });
+    const logs = await db.select().from(documentAccessLogs).where(eq(documentAccessLogs.documentVersionId, v.id));
+    expect(logs.map((l) => l.action).sort()).toEqual(["DOWNLOAD", "VIEW"]); // DOWNLOAD from the previous test, VIEW from this one
   });
 });
 

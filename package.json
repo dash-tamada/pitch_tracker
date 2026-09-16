@@ -26,6 +26,7 @@
     "@node-rs/argon2": "2.2.1",
     "drizzle-orm": "0.45.2",
     "next": "16.3.5",
+    "pdfjs-dist": "^4.10.38",
     "pg": "8.23.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",

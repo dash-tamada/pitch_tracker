@@ -151,7 +151,7 @@ async function DocumentsTab({ actor, pitchId, lookups, archived, fresh }: { acto
                 <td>{fmtDateTime(v.createdAt)}</td><td>{v.uploadedByName}</td><td>{v.notes ?? ""}</td>
                 <td>{v.scanStatus === "CLEAN" ? "Scanned clean" : v.scanStatus === "NOT_SCANNED" ? "Not virus-scanned" : v.scanStatus}</td>
                 <td style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                  {can(actor, "document.download") && <ViewInPopupButton href={`/api/v1/document-versions/${v.id}/view`} />}
+                  {can(actor, "document.download") && <ViewInPopupButton href={`/documents/${v.id}/preview`} />}
                   {can(actor, "document.download") && <a className="btn-secondary" href={`/api/v1/document-versions/${v.id}/download`} rel="noreferrer">Download</a>}
                   {canUpload && !v.isCurrent && <ActionForm endpoint={`/api/v1/documents/${doc.id}/current`} fields={[]} extra={{ versionId: v.id }} submitLabel="Make current" />}
                 </td>

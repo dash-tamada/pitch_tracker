@@ -103,9 +103,13 @@ export function errorResponse(err: unknown, requestId: string): Response {
     return NextResponse.json({ error: { code: "VALIDATION", message: "The request is not valid." } }, { status: 400 });
   }
   // Details go to server logs only — never to the client.
-  // Driver errors embed SQL parameters (possibly personal data) in `message`, so log only structured codes.
+  // Driver errors embed SQL parameters (possibly personal data) in `message`, so log only structured codes for
+  // those. Everything else's `message` is engineer-written operational text (e.g. StorageError wrapping a Google
+  // Drive API failure reason) with no user data in it, so it's safe — and necessary — to log in full.
   const cause = (err as { cause?: { code?: string; constraint?: string } } | null)?.cause;
+  const isDriverError = Boolean(cause?.code || cause?.constraint);
   console.error(JSON.stringify({ level: "error", requestId, name: err instanceof Error ? err.name : "unknown",
+    message: !isDriverError && err instanceof Error ? err.message.slice(0, 800) : undefined,
     dbCode: cause?.code, dbConstraint: cause?.constraint }));
   return NextResponse.json({ error: { code: "INTERNAL", message: "Something went wrong. Please try again.", requestId } }, { status: 500 });
 }

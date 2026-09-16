@@ -164,13 +164,17 @@ code.secret { font-size: 18px; letter-spacing: .08em; background: #f3eff5; paddi
   .main { padding: 16px; }
 }
 
-/* Document preview popup (src/components/document-preview.tsx): no native browser viewer chrome, and
-   printing this page yields a blank page with a short notice rather than a usable copy of the document. */
-.doc-preview { min-height: 100vh; background: var(--ink); color: #efe9f3; display: flex; flex-direction: column; }
+/* Document preview (src/components/document-preview.tsx): no native browser viewer chrome, and printing
+   this page yields a blank page with a short notice rather than a usable copy of the document. Fills
+   whichever container it's placed in — 100vh on the standalone /documents/[id]/preview page (.doc-preview-page),
+   or the modal card's own fixed height when opened in place via DocumentViewButton. */
+.doc-preview-page { height: 100vh; }
+.doc-preview { height: 100%; background: var(--ink); color: #efe9f3; display: flex; flex-direction: column; border-radius: inherit; }
 .doc-preview-bar { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: #221c28; border-bottom: 1px solid #3a3140; flex-wrap: wrap; }
 .doc-preview-bar .name { font-size: 13px; color: #cfc7d6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 40vw; }
 .doc-preview-bar button { font: inherit; background: #3a3140; color: #efe9f3; border: 1px solid #4d4356; border-radius: 8px; padding: 6px 10px; cursor: pointer; }
 .doc-preview-bar button:disabled { opacity: .4; cursor: default; }
+.doc-preview-bar a { font-size: 13px; color: #cfc7d6; }
 .doc-preview-bar .spacer { flex: 1; }
 .doc-preview-body { flex: 1; overflow: auto; display: flex; justify-content: center; padding: 18px; }
 .doc-preview-body img { max-width: 100%; height: auto; }
@@ -180,4 +184,25 @@ code.secret { font-size: 18px; letter-spacing: .08em; background: #f3eff5; paddi
 @media print {
   .doc-preview-bar, .doc-preview-body { display: none !important; }
   .doc-preview-print-notice { display: block !important; padding: 40px; font: 14px sans-serif; }
+}
+
+/* In-page preview modal (src/components/document-view-button.tsx): opens over the current page instead of a
+   separate browser window, as an elevated card (layered shadow = the "3D" depth) with a pop-in entrance. */
+.doc-modal-backdrop { position: fixed; inset: 0; background: rgba(10, 8, 12, .6); display: flex; align-items: center; justify-content: center; padding: 24px; z-index: 1000; }
+.doc-modal-card {
+  position: relative; width: min(1000px, 100%); height: min(85vh, 900px); border-radius: 14px; overflow: hidden;
+  box-shadow: 0 30px 70px -16px rgba(0, 0, 0, .6), 0 12px 24px rgba(0, 0, 0, .4), 0 2px 6px rgba(0, 0, 0, .3);
+  animation: doc-modal-pop .16s ease-out;
+}
+.doc-modal-close {
+  position: absolute; top: 8px; right: 8px; z-index: 1; width: 30px; height: 30px; border-radius: 999px; line-height: 1;
+  background: #3a3140; color: #efe9f3; border: 1px solid #4d4356; cursor: pointer; font-size: 16px;
+}
+@keyframes doc-modal-pop {
+  from { opacity: 0; transform: scale(.95) translateY(8px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+@media (max-width: 700px) {
+  .doc-modal-backdrop { padding: 0; }
+  .doc-modal-card { width: 100%; height: 100%; border-radius: 0; }
 }

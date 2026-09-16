@@ -4,8 +4,13 @@ import { route, uuidParam } from "@/server/lib/http";
 import { viewVersion } from "@/server/modules/documents/service";
 import { getStorage } from "@/server/modules/storage";
 
-/** Same access checks and logging as /download, but the resulting URL renders inline for a preview popup. */
-export const GET = route<{ id: string }>({ auth: true, rateLimit: { limit: 20, windowMs: 60_000 } }, async ({ req, session, params, ctx }) => {
-  const url = await viewVersion(getDb(), getStorage(), session!.actor, uuidParam(params.id, "Document"), ctx);
-  return NextResponse.redirect(new URL(url, req.nextUrl.origin), { status: 303, headers: { "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" } });
+/**
+ * Same access checks and logging as /download, but returns the inline preview URL as JSON (never a redirect):
+ * the raw file must never be navigated to directly, or the browser's own PDF/image viewer takes over with its
+ * full native chrome (print, download, zoom toolbar). Both the in-page preview modal (DocumentViewButton) and
+ * the standalone /documents/[id]/preview page fetch this and render the bytes themselves.
+ */
+export const GET = route<{ id: string }>({ auth: true, rateLimit: { limit: 20, windowMs: 60_000 } }, async ({ session, params, ctx }) => {
+  const { url, mime, filename } = await viewVersion(getDb(), getStorage(), session!.actor, uuidParam(params.id, "Document"), ctx);
+  return NextResponse.json({ url, mime, filename }, { headers: { "Cache-Control": "no-store" } });
 });

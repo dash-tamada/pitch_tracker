@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
-type Props = { url: string; mime: string; filename: string };
+type Props = { url: string; mime: string; filename: string; newTabHref?: string };
 
 const MIN_SCALE = 0.5;
 const MAX_SCALE = 2.5;
@@ -16,12 +16,12 @@ const MAX_SCALE = 2.5;
  * screen is only what this component renders, which is exactly "prev/next page" and "zoom" — no print, no
  * download, no save-as affordance.
  */
-export function DocumentPreview({ url, mime, filename }: Props) {
-  if (mime === "application/pdf") return <PdfPreview url={url} filename={filename} />;
-  if (mime.startsWith("image/")) return <ImagePreview url={url} filename={filename} />;
-  if (mime === "text/plain") return <TextPreview url={url} filename={filename} />;
+export function DocumentPreview({ url, mime, filename, newTabHref }: Props) {
+  if (mime === "application/pdf") return <PdfPreview url={url} filename={filename} newTabHref={newTabHref} />;
+  if (mime.startsWith("image/")) return <ImagePreview url={url} filename={filename} newTabHref={newTabHref} />;
+  if (mime === "text/plain") return <TextPreview url={url} filename={filename} newTabHref={newTabHref} />;
   return (
-    <Shell filename={filename}>
+    <Shell filename={filename} newTabHref={newTabHref}>
       <p className="doc-preview-status">
         Preview isn&apos;t available for this file type in the browser. Ask whoever shared it for the Download option instead.
       </p>
@@ -29,13 +29,14 @@ export function DocumentPreview({ url, mime, filename }: Props) {
   );
 }
 
-function Shell({ filename, toolbar, children }: { filename: string; toolbar?: React.ReactNode; children: React.ReactNode }) {
+function Shell({ filename, toolbar, newTabHref, children }: { filename: string; toolbar?: React.ReactNode; newTabHref?: string; children: React.ReactNode }) {
   return (
     <div className="doc-preview" onContextMenu={(e) => e.preventDefault()}>
       <div className="doc-preview-bar">
         <span className="name" title={filename}>{filename}</span>
         <span className="spacer" />
         {toolbar}
+        {newTabHref && <a href={newTabHref} target="_blank" rel="noopener noreferrer">Open in new tab ⤢</a>}
       </div>
       <div className="doc-preview-body">{children}</div>
       <div className="doc-preview-print-notice">Printing is disabled for this document.</div>
@@ -43,16 +44,16 @@ function Shell({ filename, toolbar, children }: { filename: string; toolbar?: Re
   );
 }
 
-function ImagePreview({ url, filename }: { url: string; filename: string }) {
+function ImagePreview({ url, filename, newTabHref }: { url: string; filename: string; newTabHref?: string }) {
   return (
-    <Shell filename={filename}>
+    <Shell filename={filename} newTabHref={newTabHref}>
       {/* eslint-disable-next-line @next/next/no-img-element -- signed, short-lived, non-public URL; next/image would need a remote-pattern allowance for it */}
       <img src={url} alt={filename} draggable={false} />
     </Shell>
   );
 }
 
-function TextPreview({ url, filename }: { url: string; filename: string }) {
+function TextPreview({ url, filename, newTabHref }: { url: string; filename: string; newTabHref?: string }) {
   const [text, setText] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
@@ -64,13 +65,13 @@ function TextPreview({ url, filename }: { url: string; filename: string }) {
     return () => { cancelled = true; };
   }, [url]);
   return (
-    <Shell filename={filename}>
+    <Shell filename={filename} newTabHref={newTabHref}>
       {error ? <p className="doc-preview-status">{error}</p> : text === null ? <p className="doc-preview-status">Loading…</p> : <pre>{text}</pre>}
     </Shell>
   );
 }
 
-function PdfPreview({ url, filename }: { url: string; filename: string }) {
+function PdfPreview({ url, filename, newTabHref }: { url: string; filename: string; newTabHref?: string }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const docRef = useRef<import("pdfjs-dist").PDFDocumentProxy | null>(null);
   const renderTaskRef = useRef<{ cancel: () => void } | null>(null);
@@ -116,10 +117,16 @@ function PdfPreview({ url, filename }: { url: string; filename: string }) {
       if (!canvas) return;
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
+      // Render at the screen's real pixel density (devicePixelRatio), not 1 CSS pixel = 1 canvas pixel — otherwise
+      // the page looks soft/blurry on any HiDPI (Retina, 125%+ Windows scaling) display, which is most of them.
+      const outputScale = window.devicePixelRatio || 1;
+      canvas.width = Math.floor(viewport.width * outputScale);
+      canvas.height = Math.floor(viewport.height * outputScale);
+      canvas.style.width = `${Math.floor(viewport.width)}px`;
+      canvas.style.height = `${Math.floor(viewport.height)}px`;
       renderTaskRef.current?.cancel();
-      const task = pdfPage.render({ canvasContext: ctx, viewport });
+      const transform = outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : undefined;
+      const task = pdfPage.render({ canvasContext: ctx, viewport, transform });
       renderTaskRef.current = task;
       try {
         await task.promise;
@@ -141,7 +148,7 @@ function PdfPreview({ url, filename }: { url: string; filename: string }) {
   ) : undefined;
 
   return (
-    <Shell filename={filename} toolbar={toolbar}>
+    <Shell filename={filename} toolbar={toolbar} newTabHref={newTabHref}>
       {status === "loading" && <p className="doc-preview-status">Loading…</p>}
       {status === "error" && <p className="doc-preview-status">{errorMsg}</p>}
       <canvas ref={canvasRef} style={{ display: status === "ready" ? "block" : "none", background: "#fff", boxShadow: "0 2px 12px rgba(0,0,0,.4)" }} />

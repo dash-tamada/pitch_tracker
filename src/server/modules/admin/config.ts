@@ -64,18 +64,18 @@ export async function updateSettings(db: Db, actor: Actor, raw: unknown, ctx: Re
     const t = input.aging_thresholds_days;
     if (!(t.attention < t.overdue && t.overdue < t.critical)) throw new AppError("VALIDATION", "Thresholds must increase: attention < overdue < critical.");
   }
-  // Loosening approval controls is a security-relevant change: Super Admin only.
-  if ((input.allow_self_approval === true || input.executive_approval_mode === "ANY") && !actor.roles.has("SUPER_ADMIN")) {
+  // Loosening approval controls is a security-relevant change: Company Admin only.
+  if ((input.allow_self_approval === true || input.executive_approval_mode === "ANY") && !actor.roles.has("COMPANY_ADMIN")) {
     const current = await getAllSettings(db, actor);
     if ((input.allow_self_approval === true && !current.allow_self_approval) || (input.executive_approval_mode === "ANY" && current.executive_approval_mode === "ALL")) {
-      throw new AppError("FORBIDDEN", "Only a Super Admin can relax approval rules.");
+      throw new AppError("FORBIDDEN", "Only a Company Admin can relax approval rules.");
     }
   }
   return db.transaction(async (tx) => {
     const before = Object.fromEntries((await tx.select().from(systemSettings)).map((r) => [r.key, r.value]));
     for (const [key, value] of Object.entries(input)) {
       await tx.insert(systemSettings).values({ key, value: value as object, updatedById: actor.userId })
-        .onConflictDoUpdate({ target: systemSettings.key, set: { value: value as object, updatedById: actor.userId } });
+        .onConflictDoUpdate({ target: [systemSettings.companyId, systemSettings.key], set: { value: value as object, updatedById: actor.userId } });
     }
     await writeAudit(tx, { actorId: actor.userId, action: "config.settings_changed", resourceType: "config",
       before: Object.fromEntries(Object.keys(input).map((k) => [k, before[k]])), after: input }, ctx);
@@ -93,7 +93,9 @@ export async function getActiveWorkflow(db: Db, actor: Actor) {
   const transitions = await db.select().from(workflowTransitions).where(eq(workflowTransitions.definitionId, def.id)).orderBy(asc(workflowTransitions.fromStageKey), asc(workflowTransitions.action));
   const versions = await db.select({ id: workflowDefinitions.id, version: workflowDefinitions.version, isActive: workflowDefinitions.isActive, createdAt: workflowDefinitions.createdAt })
     .from(workflowDefinitions).orderBy(desc(workflowDefinitions.version));
-  return { definition: def, stages, transitions, versions };
+  // company_id is an internal ownership column; it is never part of the editable workflow payload.
+  const strip = <T extends { companyId: string }>({ companyId: _c, ...rest }: T) => rest;
+  return { definition: strip(def), stages: stages.map(strip), transitions: transitions.map(strip), versions };
 }
 
 const stageInput = z.object({ key: KEY, name: z.string().trim().min(1).max(120), category: z.enum(["INTAKE", "REVIEW", "EXECUTIVE", "PLATFORM", "DEVELOPMENT", "PRODUCTION", "PAUSED", "TERMINAL"]),

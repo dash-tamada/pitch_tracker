@@ -1,37 +1,48 @@
-import { eq, inArray } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
-import { createDb, type Db } from "@/server/db/client";
-import { platforms, roles, userRoles, users } from "@/server/db/schema";
+import { createDb, createPool, createTenantDb, type Db } from "@/server/db/client";
+import { platforms } from "@/server/db/schema";
+import { createActiveUser } from "@/server/modules/tenancy/bootstrap";
+import { COMPANY_A, COMPANY_B } from "./tenants";
 import { loadActor } from "@/server/modules/authz/actor";
 import type { Actor, Clearance } from "@/server/modules/authz/policy";
 import { createCreator } from "@/server/modules/creators/service";
 import { createPitch } from "@/server/modules/pitches/service";
-import { hashPassword } from "@/server/modules/auth/password";
 
-let handle: ReturnType<typeof createDb> | undefined;
-export function testDb(): Db {
-  handle ??= createDb(process.env.TEST_DATABASE_URL!, 4);
-  return handle.db;
+export { COMPANY_A, COMPANY_B };
+
+let appPool: ReturnType<typeof createPool> | undefined;
+let platform: ReturnType<typeof createDb> | undefined;
+const tenants = new Map<string, Db>();
+
+/** Company-scoped handle (pitch_app + row-level security) for company A unless another company id is given. */
+export function testDb(companyId: string = COMPANY_A): Db {
+  appPool ??= createPool(process.env.TEST_DATABASE_URL!, 4);
+  let db = tenants.get(companyId);
+  if (!db) { db = createTenantDb(appPool, companyId); tenants.set(companyId, db); }
+  return db;
 }
+export const testDbB = () => testDb(COMPANY_B);
+
+/** Identity/platform handle (pitch_platform): sign-in, sessions, companies. No access to company content. */
+export function platformTestDb(): Db {
+  platform ??= createDb(process.env.TEST_PLATFORM_DATABASE_URL!, 2);
+  return platform.db;
+}
+
 export async function closeDb(): Promise<void> {
-  await handle?.pool.end();
-  handle = undefined;
+  await appPool?.end();
+  await platform?.pool.end();
+  appPool = undefined; platform = undefined; tenants.clear();
 }
 
 export interface TestUser { id: string; email: string; actor: Actor }
 
 export async function makeUser(db: Db, name: string, roleKeys: string[], opts: { clearance?: Clearance; password?: string } = {}): Promise<TestUser> {
   const email = `${name.toLowerCase().replace(/\W+/g, ".")}.${randomUUID().slice(0, 8)}@example.test`;
-  const [u] = await db.insert(users).values({
-    email, fullName: name, clearance: opts.clearance ?? "CONFIDENTIAL",
-    passwordHash: opts.password ? await hashPassword(opts.password) : null,
-  }).returning({ id: users.id });
-  if (roleKeys.length) {
-    const rs = await db.select({ id: roles.id }).from(roles).where(inArray(roles.key, roleKeys));
-    await db.insert(userRoles).values(rs.map((r) => ({ userId: u!.id, roleId: r.id })));
-  }
-  const actor = (await loadActor(db, u!.id, true))!;
-  return { id: u!.id, email, actor };
+  const id = await createActiveUser(platformTestDb(), db, { email, fullName: name, roleKeys, clearance: opts.clearance ?? "CONFIDENTIAL", password: opts.password });
+  const actor = (await loadActor(db, id, true))!;
+  return { id, email, actor };
 }
 
 export async function makeTeam(db: Db) {

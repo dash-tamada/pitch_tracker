@@ -29,7 +29,7 @@ export default async function PitchDetailPage({ params, searchParams }: { params
   const { id } = await params;
   const sp = await searchParams;
   const tab = TABS.some((t) => t.key === sp.tab) ? sp.tab! : "overview";
-  const db = getDb();
+  const db = getDb(actor);
   const d = await pageData(() => getPitchDetail(db, actor, id));
   if (!d) return <p className="notice">You do not have access to this pitch.</p>;
   const { pitch: p, status: s, creator } = d;
@@ -127,7 +127,7 @@ function Overview({ d, lookups }: { d: Detail; lookups: LookupMap }) {
 }
 
 async function DocumentsTab({ actor, pitchId, lookups, archived, fresh }: { actor: Actor; pitchId: string; lookups: LookupMap; archived: boolean; fresh: boolean }) {
-  const db = getDb();
+  const db = getDb(actor);
   const docs = await pageData(() => listPitchDocuments(db, actor, pitchId));
   if (!docs) return <p className="notice">You do not have access to documents.</p>;
   const cats = (lookups.DOCUMENT_CATEGORY ?? []).filter((c) => c.active);
@@ -191,7 +191,7 @@ function actionFields(a: Awaited<ReturnType<typeof getAvailableActions>>[number]
 }
 
 async function WorkflowTab({ actor, pitchId, version, lookups, suggest, to }: { actor: Actor; pitchId: string; version: number; lookups: LookupMap; suggest?: string; to?: string }) {
-  const db = getDb();
+  const db = getDb(actor);
   const [actions, events, platforms, ratingCats, stages] = await Promise.all([getAvailableActions(db, actor, pitchId), getTimeline(db, actor, pitchId),
     getPlatformOptions(db), getRatingCategories(db), getActiveStages(db)]);
   const generic = actions.filter((a) => !TRACKER_ACTIONS.has(a.action));
@@ -218,14 +218,14 @@ async function WorkflowTab({ actor, pitchId, version, lookups, suggest, to }: { 
       </div>
       <div>
         <h2>Timeline</h2>
-        <Timeline events={events} lookups={lookups} stageName={stageName} />
+        <Timeline actor={actor} events={events} lookups={lookups} stageName={stageName} />
       </div>
     </div>
   );
 }
 
-async function Timeline({ events, lookups, stageName }: { events: Awaited<ReturnType<typeof getTimeline>>; lookups: LookupMap; stageName: (k: string | null) => string }) {
-  const db = getDb();
+async function Timeline({ actor, events, lookups, stageName }: { actor: Actor; events: Awaited<ReturnType<typeof getTimeline>>; lookups: LookupMap; stageName: (k: string | null) => string }) {
+  const db = getDb(actor);
   const names = await userNames(db, events.flatMap((e) => [e.actorId, e.toOwnerId, e.fromOwnerId]));
   const platforms = await getPlatformOptions(db, true);
   const cls = (a: string) => (a === "REJECT" ? "t-reject" : ["SEND_TO_PLATFORM", "APPROVE", "GREENLIGHT", "MARK_PLATFORM_APPROVED", "MARK_READY_FOR_DEVELOPMENT"].includes(a) ? "t-approve" : a.includes("PLATFORM") ? "t-platform" : "");
@@ -251,7 +251,7 @@ async function Timeline({ events, lookups, stageName }: { events: Awaited<Return
 }
 
 async function RemarksTab({ actor, pitchId, lookups }: { actor: Actor; pitchId: string; lookups: LookupMap }) {
-  const db = getDb();
+  const db = getDb(actor);
   const events = (await getTimeline(db, actor, pitchId)).filter((e) => e.remarks || e.recommendation || e.rejectionReason);
   const names = await userNames(db, events.map((e) => e.actorId));
   if (!events.length) return <Empty>No remarks yet.</Empty>;
@@ -267,7 +267,7 @@ async function RemarksTab({ actor, pitchId, lookups }: { actor: Actor; pitchId: 
 }
 
 async function PlatformsTab({ actor, pitchId, version, stageKey, ownerId, lookups }: { actor: Actor; pitchId: string; version: number; stageKey: string; ownerId: string | null; lookups: LookupMap }) {
-  const db = getDb();
+  const db = getDb(actor);
   const list = await pageData(() => pitchPlatformPitches(db, actor, pitchId));
   if (!list) return <p className="notice">You do not have access to platform information.</p>;
   const platforms = await getPlatformOptions(db);
@@ -337,7 +337,7 @@ async function PlatformsTab({ actor, pitchId, version, stageKey, ownerId, lookup
 }
 
 async function CreatorTab({ actor, creatorId }: { actor: Actor; creatorId: string }) {
-  const profile = await pageData(() => getCreatorProfile(getDb(), actor, creatorId));
+  const profile = await pageData(() => getCreatorProfile(getDb(actor), actor, creatorId));
   if (!profile) return <p className="notice">You do not have access to creator profiles.</p>;
   const c = profile.creator;
   return (
@@ -354,7 +354,7 @@ async function CreatorTab({ actor, creatorId }: { actor: Actor; creatorId: strin
 }
 
 async function ProjectsTab({ actor, creatorId }: { actor: Actor; creatorId: string }) {
-  const profile = await pageData(() => getCreatorProfile(getDb(), actor, creatorId));
+  const profile = await pageData(() => getCreatorProfile(getDb(actor), actor, creatorId));
   if (!profile) return <p className="notice">You do not have access to creator profiles.</p>;
   if (!profile.projects.length) return <Empty>No previous projects recorded for this creator.</Empty>;
   return (
@@ -366,7 +366,7 @@ async function ProjectsTab({ actor, creatorId }: { actor: Actor; creatorId: stri
 }
 
 async function RatingsTab({ actor, pitchId }: { actor: Actor; pitchId: string }) {
-  const db = getDb();
+  const db = getDb(actor);
   const cats = await getRatingCategories(db);
   const visible = await canSeeRatings(db, actor);
   const { ratings: ratingsTable, ratingScores, users, ratingCategories } = await import("@/server/db/schema");
@@ -397,7 +397,7 @@ async function RatingsTab({ actor, pitchId }: { actor: Actor; pitchId: string })
 }
 
 async function ImagesTab({ actor, pitchId, lookups, archived }: { actor: Actor; pitchId: string; lookups: LookupMap; archived: boolean }) {
-  const images = await pageData(() => listPitchImages(getDb(), getStorage(), actor, pitchId));
+  const images = await pageData(() => listPitchImages(getDb(actor), getStorage(), actor, pitchId));
   if (!images) return <p className="notice">You do not have access to images.</p>;
   return (
     <>
@@ -416,7 +416,7 @@ async function ImagesTab({ actor, pitchId, lookups, archived }: { actor: Actor; 
 }
 
 async function DevelopmentTab({ actor, pitchId, version, stageKey }: { actor: Actor; pitchId: string; version: number; stageKey: string }) {
-  const db = getDb();
+  const db = getDb(actor);
   const dp = await pageData(() => pitchDevelopmentAndProduction(db, actor, pitchId));
   if (!dp) return <p className="notice">No access.</p>;
   const dev = dp.development;
@@ -453,7 +453,7 @@ async function DevelopmentTab({ actor, pitchId, version, stageKey }: { actor: Ac
 }
 
 async function ProductionTab({ actor, pitchId, version, stageKey }: { actor: Actor; pitchId: string; version: number; stageKey: string }) {
-  const dp = await pageData(() => pitchDevelopmentAndProduction(getDb(), actor, pitchId));
+  const dp = await pageData(() => pitchDevelopmentAndProduction(getDb(actor), actor, pitchId));
   const prod = dp?.production;
   if (!prod) return <Empty>Not greenlit yet.</Empty>;
   const next: Record<string, string> = { GREENLIT: "Pre-Production", PRE_PRODUCTION: "Production", PRODUCTION: "Post-Production", POST_PRODUCTION: "Completed", COMPLETED: "Released" };
@@ -479,7 +479,7 @@ async function ProductionTab({ actor, pitchId, version, stageKey }: { actor: Act
 }
 
 async function ActivityTab({ actor, pitchId }: { actor: Actor; pitchId: string }) {
-  const db = getDb();
+  const db = getDb(actor);
   if (can(actor, "audit.view")) {
     const { queryAudit } = await import("@/server/modules/admin/config");
     const page = await queryAudit(db, actor, { resourceType: "pitch", resourceId: pitchId, limit: 200 });

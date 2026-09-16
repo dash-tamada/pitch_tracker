@@ -12,6 +12,9 @@ const CLEARANCE_RANK: Record<Clearance, number> = { STANDARD: 1, CONFIDENTIAL: 2
 
 export interface Actor {
   readonly userId: string;
+  /** Owning company, from the server-side session only. null for platform (Super Admin) accounts. */
+  readonly companyId: string | null;
+  readonly scope: "PLATFORM" | "COMPANY";
   readonly roles: ReadonlySet<RoleKey | string>;
   readonly permissions: ReadonlySet<Permission | string>;
   readonly clearance: Clearance;

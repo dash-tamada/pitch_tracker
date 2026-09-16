@@ -5,7 +5,7 @@ import { api, ApiError } from "./client-api";
 
 export type Option = { value: string; label: string };
 export type FieldSpec =
-  | { name: string; label: string; type: "text" | "textarea" | "date" | "email" | "url"; required?: boolean; placeholder?: string; defaultValue?: string; hint?: string; maxLength?: number }
+  | { name: string; label: string; type: "text" | "textarea" | "date" | "email" | "url" | "password"; required?: boolean; placeholder?: string; defaultValue?: string; hint?: string; maxLength?: number }
   | { name: string; label: string; type: "number"; required?: boolean; min?: number; max?: number; defaultValue?: number; hint?: string }
   | { name: string; label: string; type: "select"; options: Option[]; required?: boolean; defaultValue?: string; hint?: string }
   | { name: string; label: string; type: "checkboxes"; options: Option[]; required?: boolean; defaultValue?: string[]; hint?: string }
@@ -101,8 +101,8 @@ export function ActionForm({ endpoint, method = "POST", fields, submitLabel, tit
             <label key={f.name} className={full}>
               <span>{f.label}{"required" in f && f.required ? " *" : ""}</span>
               {f.type === "textarea" && <textarea name={f.name} required={f.required} placeholder={f.placeholder} defaultValue={f.defaultValue} maxLength={f.maxLength} />}
-              {(f.type === "text" || f.type === "date" || f.type === "email" || f.type === "url") &&
-                <input name={f.name} type={f.type} required={f.required} placeholder={f.placeholder} defaultValue={f.defaultValue} maxLength={f.maxLength} />}
+              {(f.type === "text" || f.type === "date" || f.type === "email" || f.type === "url" || f.type === "password") &&
+                <input name={f.name} type={f.type} autoComplete={f.type === "password" ? "new-password" : undefined} required={f.required} placeholder={f.placeholder} defaultValue={f.defaultValue} maxLength={f.maxLength} />}
               {f.type === "number" && <input name={f.name} type="number" required={f.required} min={f.min} max={f.max} defaultValue={f.defaultValue} />}
               {f.type === "select" && (
                 <select name={f.name} required={f.required} defaultValue={f.defaultValue ?? ""}>

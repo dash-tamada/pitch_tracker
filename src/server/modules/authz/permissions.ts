@@ -43,12 +43,25 @@ export const PERMISSIONS = {
   "workflow.manage": "Configure workflow",
   "config.manage": "Manage lookups and settings",
   "audit.view": "View audit logs",
+  "company.manage": "Manage company profile, branding and email exceptions",
+} as const;
+
+/**
+ * Platform permissions exist only for platform (Super Admin) accounts. They are stored with scope PLATFORM and a
+ * database trigger refuses to attach them to any company role. Platform accounts are authorised by scope.
+ */
+export const PLATFORM_PERMISSIONS = {
+  "platform.companies.manage": "Create, edit, suspend and archive companies",
+  "platform.plans.manage": "Manage plans, subscriptions and limits",
+  "platform.usage.view": "View per-company usage (counts only, no content)",
+  "platform.audit.view": "View platform and security audit events",
+  "platform.support.access": "Request time-limited, audited support access to a company",
 } as const;
 
 export type Permission = keyof typeof PERMISSIONS;
 export const ALL_PERMISSIONS = Object.keys(PERMISSIONS) as Permission[];
 
-export const ROLE_KEYS = ["SUPER_ADMIN", "ADMIN", "SENIOR_EMPLOYEE", "EMPLOYEE", "CEO", "COO", "VIEWER"] as const;
+export const ROLE_KEYS = ["COMPANY_ADMIN", "ADMIN", "SENIOR_EMPLOYEE", "EMPLOYEE", "CEO", "COO", "VIEWER"] as const;
 export type RoleKey = (typeof ROLE_KEYS)[number];
 
 const REVIEW: Permission[] = [
@@ -67,7 +80,7 @@ const EXECUTIVE_EXTRA: Permission[] = [
 ];
 
 export const DEFAULT_ROLE_MATRIX: Record<RoleKey, { name: string; permissions: Permission[] }> = {
-  SUPER_ADMIN: { name: "Super Admin", permissions: [...ALL_PERMISSIONS] },
+  COMPANY_ADMIN: { name: "Company Admin", permissions: [...ALL_PERMISSIONS] },
   // Separation of duties: Admin runs the system but cannot read scripts or decide on pitches.
   ADMIN: {
     name: "Admin",
@@ -85,4 +98,4 @@ export const DEFAULT_ROLE_MATRIX: Record<RoleKey, { name: string; permissions: P
 };
 
 /** Roles that must use MFA before any protected action. */
-export const MFA_REQUIRED_ROLES: ReadonlySet<RoleKey> = new Set(["SUPER_ADMIN", "ADMIN", "CEO", "COO"]);
+export const MFA_REQUIRED_ROLES: ReadonlySet<RoleKey> = new Set(["COMPANY_ADMIN", "ADMIN", "CEO", "COO"]);

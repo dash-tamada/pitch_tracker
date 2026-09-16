@@ -14,7 +14,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const { actor } = await requirePageSession();
   const sp = await searchParams;
   const tab = TABS.some((t) => t.key === sp.tab) ? sp.tab! : "general";
-  const db = getDb();
+  const db = getDb(actor);
   if (!can(actor, "config.manage") && !can(actor, "workflow.manage") && !can(actor, "audit.view")) return <p className="notice">Administrators only.</p>;
   return (
     <>
@@ -31,7 +31,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
     const s = await getAllSettings(db, actor);
     return (
       <ActionForm endpoint="/api/v1/admin/settings" method="PATCH" title="Policies" submitLabel="Save settings"
-        description="Relaxing approval rules requires a Super Admin."
+        description="Relaxing approval rules requires a Company Admin."
         fields={[
           { name: "executive_approval_mode", label: "CEO / COO approval", type: "select", defaultValue: s.executive_approval_mode, options: [{ value: "ANY", label: "Either CEO or COO" }, { value: "ALL", label: "Both CEO and COO" }] },
           { name: "allow_self_approval", label: "Allow people to approve pitches they submitted", type: "checkbox", defaultValue: s.allow_self_approval },

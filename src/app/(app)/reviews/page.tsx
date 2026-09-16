@@ -20,7 +20,7 @@ function Table({ rows, showOwner }: { rows: Row[]; showOwner?: boolean }) {
 
 export default async function ReviewsPage() {
   const { actor } = await requirePageSession();
-  const w = await myWork(getDb(), actor);
+  const w = await myWork(getDb(actor), actor);
   return (
     <>
       <PageHeader title="My Reviews" subtitle="Everything assigned to you, everything you passed on, and what came back." />

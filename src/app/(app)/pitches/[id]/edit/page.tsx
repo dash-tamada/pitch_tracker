@@ -10,7 +10,7 @@ export default async function EditPitchPage({ params }: { params: Promise<{ id: 
   const { actor } = await requirePageSession();
   const { id } = await params;
   if (!can(actor, "pitch.edit")) return <p className="notice">You do not have permission to edit pitches.</p>;
-  const db = getDb();
+  const db = getDb(actor);
   const d = await pageData(() => getPitchDetail(db, actor, id));
   if (!d) return <p className="notice">You do not have access to this pitch.</p>;
   const lookups = await getLookups(db);

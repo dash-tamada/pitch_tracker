@@ -166,3 +166,30 @@ test("admin manages users but cannot read pitches", async ({ page }) => {
   await page.goto("/pitches");
   await expect(page.getByText("You do not have access to pitches.")).toBeVisible();
 });
+
+test("platform Super Admin: MFA, company console with counts only; company users cannot open it", async ({ page, browser }) => {
+  await page.goto("/login");
+  await page.getByLabel("Work email").fill("platform.admin@example.test");
+  await page.getByLabel("Password").fill("Platform-Console-2026!");
+  await page.getByRole("button", { name: "Continue" }).click();
+  await page.waitForURL(/\/mfa-setup$/); // platform accounts always need MFA
+  await page.getByRole("button", { name: "Set up authenticator app" }).click();
+  const secret = (await page.locator("code.secret").innerText()).replace(/\s/g, "");
+  await page.getByLabel("6-digit code").fill(hotp(base32Decode(secret), stepAt(Date.now())));
+  await page.getByRole("button", { name: "Confirm" }).click();
+  await page.waitForURL(/\/platform$/);
+  await expect(page.getByRole("heading", { name: "Platform overview" })).toBeVisible();
+  await page.goto("/platform/companies");
+  await expect(page.getByRole("link", { name: "Demo Films" })).toBeVisible();
+  // The platform account has no company: company pages and APIs refuse it.
+  expect((await page.request.get("/api/v1/pitches")).status()).toBe(403);
+  await page.goto("/pitches");
+  await page.waitForURL(/\/platform$/);
+
+  const other = await browser.newPage();
+  await signIn(other, "viewer");
+  expect((await other.request.get("/api/v1/platform/companies")).status()).toBe(403);
+  const r = await other.goto("/platform/companies");
+  expect(r?.status()).toBe(404);
+  await other.close();
+});

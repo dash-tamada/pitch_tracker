@@ -22,7 +22,7 @@ function Rows({ rows, tab = "workflow" }: { rows: Row[]; tab?: string }) {
 export default async function ManagementPage() {
   const { actor } = await requirePageSession();
   if (!can(actor, "pitch.view_all")) return <p className="notice">Management only.</p>;
-  const v = await executiveView(getDb(), actor);
+  const v = await executiveView(getDb(actor), actor);
   return (
     <>
       <PageHeader title="CEO / COO Desk" subtitle="Decisions waiting, strongest stories, platform responses and the pipeline after approval." />

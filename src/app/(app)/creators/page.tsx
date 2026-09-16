@@ -12,7 +12,7 @@ export default async function CreatorsPage({ searchParams }: { searchParams: Pro
   const { actor } = await requirePageSession();
   const sp = await searchParams;
   const query = Object.fromEntries(Object.entries({ q: sp.q, type: sp.type, cursor: sp.cursor }).filter(([, v]) => v));
-  const page = await pageData(() => listCreators(getDb(), actor, query));
+  const page = await pageData(() => listCreators(getDb(actor), actor, query));
   if (!page) return <p className="notice">You do not have access to creators.</p>;
 
   const next = page.nextCursor ? `?${new URLSearchParams({ ...query, cursor: page.nextCursor }).toString()}` : null;

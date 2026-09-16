@@ -11,7 +11,7 @@ const EXPORTS: [string, string][] = [["pitches", "Pitch list"], ["creators", "Cr
 
 export default async function AnalyticsPage() {
   const { actor } = await requirePageSession();
-  const r = await pageData(() => managementReports(getDb(), actor));
+  const r = await pageData(() => managementReports(getDb(actor), actor));
   if (!r) return <p className="notice">Reports are available to management.</p>;
   const s = r.summary;
   return (

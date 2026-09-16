@@ -18,6 +18,7 @@ export default defineConfig({
     reuseExistingServer: false,
     env: {
       DATABASE_URL: e2eDb,
+      PLATFORM_DATABASE_URL: process.env.E2E_PLATFORM_DATABASE_URL ?? "postgres://pitch_platform:dev_platform_local_only@localhost:5432/pitch_e2e",
       APP_ORIGIN: `http://localhost:${PORT}`,
       SESSION_TOKEN_PEPPER: process.env.SESSION_TOKEN_PEPPER ?? Buffer.alloc(32, 3).toString("base64"),
       MFA_ENCRYPTION_KEY: process.env.MFA_ENCRYPTION_KEY ?? Buffer.alloc(32, 4).toString("base64"),

@@ -5,6 +5,8 @@ import type { Actor, Clearance } from "./policy";
 
 export interface LoadedUser {
   id: string;
+  companyId: string | null;
+  scope: "PLATFORM" | "COMPANY";
   status: string;
   clearance: Clearance;
   roles: Set<string>;
@@ -15,7 +17,7 @@ export interface LoadedUser {
 export async function loadUsersWithPermissions(db: DbOrTx, userIds: readonly string[]): Promise<Map<string, LoadedUser>> {
   const out = new Map<string, LoadedUser>();
   if (userIds.length === 0) return out;
-  const rows = await db.select({ id: users.id, status: users.status, clearance: users.clearance })
+  const rows = await db.select({ id: users.id, status: users.status, clearance: users.clearance, companyId: users.companyId, scope: users.scope })
     .from(users).where(and(inArray(users.id, [...userIds]), isNull(users.archivedAt)));
   for (const r of rows) out.set(r.id, { ...r, roles: new Set(), permissions: new Set() });
 
@@ -36,5 +38,5 @@ export async function loadUsersWithPermissions(db: DbOrTx, userIds: readonly str
 export async function loadActor(db: DbOrTx, userId: string, mfaSatisfied: boolean): Promise<Actor | null> {
   const u = (await loadUsersWithPermissions(db, [userId])).get(userId);
   if (!u || u.status !== "ACTIVE") return null;
-  return { userId: u.id, roles: u.roles, permissions: u.permissions, clearance: u.clearance, mfaSatisfied };
+  return { userId: u.id, companyId: u.companyId, scope: u.scope, roles: u.roles, permissions: u.permissions, clearance: u.clearance, mfaSatisfied };
 }

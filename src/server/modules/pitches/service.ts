@@ -2,10 +2,11 @@
  * Pitch case files: create, edit, archive/restore, list with server-side filters, and the
  * "Where is this story now?" status derived from authoritative workflow data.
  */
+import { assertCanAddPitch } from "@/server/modules/tenancy/limits";
 import { and, asc, desc, eq, gte, ilike, inArray, isNotNull, isNull, lt, lte, or, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import type { Db, DbOrTx } from "@/server/db/client";
-import {
+import { companies,
   creators, lookupValues, pitchCodeCounters, pitchParticipants, pitches, platformPitches, platforms, ratings, users,
   workflowDefinitions, workflowEvents, workflowStages,
 } from "@/server/db/schema";
@@ -76,11 +77,15 @@ export async function createPitch(db: Db, actor: Actor, raw: unknown, ctx: Reque
       .from(workflowDefinitions).where(eq(workflowDefinitions.isActive, true));
     if (!def) throw new AppError("INTERNAL", "No active workflow is configured.");
 
+    await assertCanAddPitch(tx);
     const year = new Date().getUTCFullYear();
+    // Counters and codes are per company: each company numbers its own pitches (e.g. TAM-2026-000001).
     const [counter] = await tx.insert(pitchCodeCounters).values({ year, lastValue: 1 })
-      .onConflictDoUpdate({ target: pitchCodeCounters.year, set: { lastValue: sql`${pitchCodeCounters.lastValue} + 1` } })
+      .onConflictDoUpdate({ target: [pitchCodeCounters.companyId, pitchCodeCounters.year], set: { lastValue: sql`${pitchCodeCounters.lastValue} + 1` } })
       .returning({ lastValue: pitchCodeCounters.lastValue });
-    const pitchCode = `PT-${year}-${String(counter!.lastValue).padStart(6, "0")}`;
+    const [company] = await tx.select({ code: companies.code, prefix: companies.pitchCodePrefix }).from(companies).where(eq(companies.id, sql`public.app_company_id()`));
+    if (!company) throw new AppError("INTERNAL", "Company not found.");
+    const pitchCode = `${company.prefix ?? company.code}-${year}-${String(counter!.lastValue).padStart(6, "0")}`;
 
     const [pitch] = await tx.insert(pitches).values({
       title: input.title, logline: input.logline ?? null, shortSynopsis: input.shortSynopsis ?? null, detailedSynopsis: input.detailedSynopsis ?? null,

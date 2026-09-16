@@ -1,5 +1,8 @@
 # Multi-Tenant SaaS Conversion — Phase 1 Audit & Phase 2 Design
 
+> **Implementation status (16 Sep 2026):** Phases 1–15 implemented and tested locally — migration `0006_multi_tenant.sql`, tenant-scoped database handles, platform Super Admin console, Company Admin (invitations, email policy, branding, setup), plans & limits, support access, per-company jobs and storage keys, 19 cross-tenant abuse tests, E2E for the platform console. Production upgrade: `deploy/3-multi-tenant-upgrade.sql` + `deploy/4-verify-multi-tenant.sql` (see `docs/DEPLOYMENT.md` §0). Differences from the design below: platforms are company-owned copies linked to `platform_catalog` (D-platforms); exact-address email exceptions are managed by the Company Admin, domains by the platform.
+
+
 Status: **analysis and design only — no application behaviour changed.** Written 15 Sep 2026 from the code in this repository and the live Supabase project `emtadepabamemdxmumyc`.
 
 Labels: `Confirmed:` verified in this analysis (code read, query run, or prototype test). `Likely (not verified):` reasoning, not tested. `Assumed:` a choice made to proceed — tell Durgaji if wrong. `Unknown:` needs a check.
@@ -205,6 +208,8 @@ Collection routes (cross-tenant leakage candidates): `pitches`, `creators`, `cre
 | Company Admin escalates to platform | permission `scope` + trigger; platform roles not in company role table | design |
 | Email policy bypass via API | enforced in service; exceptions need platform-granted permission + audit | design |
 | Privilege via stale session after role/disable | existing `revokeAllSessions` on access change; extend to company suspend | partly existing (`Confirmed:` users/admin.ts:116) |
+| Globally unique login email reveals that an address has an account in another company (invite returns "already in use") | Invite responds identically for new and existing addresses ("Invitation sent if the address is eligible"); the conflict is recorded for Super Admin review, never shown to the company | design |
+| Row-level security is the backstop, not the whole job: 345 query sites still need review for per-company logic (counters, settings, uniqueness messages) | Phase 6 reviews every service; tenant suite runs each service as Company A against Company B data | design |
 | Migration corrupts production data | backup, staging rehearsal, row-count + checksum verification, single transaction, rollback script | §7 |
 
 ---

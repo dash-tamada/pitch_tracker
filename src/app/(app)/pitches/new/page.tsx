@@ -9,7 +9,7 @@ import { PageHeader } from "@/components/ui";
 export default async function NewPitchPage({ searchParams }: { searchParams: Promise<{ creatorId?: string }> }) {
   const { actor } = await requirePageSession();
   if (!can(actor, "pitch.create")) return <p className="notice">You do not have permission to create pitches.</p>;
-  const db = getDb();
+  const db = getDb(actor);
   const { creatorId } = await searchParams;
   const creator = creatorId && /^[0-9a-f-]{36}$/i.test(creatorId) ? await pageData(() => getCreatorProfile(db, actor, creatorId)) : null;
   const lookups = await getLookups(db);

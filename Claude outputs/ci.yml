@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Least privilege for the workflow token.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: ci_superuser_only
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://pitch_app:ci_app@localhost:5432/pitch_test
+      TEST_MIGRATION_DATABASE_URL: postgres://pitch_migrator:ci_migrator@localhost:5432/pitch_test
+      # pitch_platform is created by migration 0006; the test setup gives it this throwaway CI password.
+      TEST_PLATFORM_DATABASE_URL: postgres://pitch_platform:ci_platform@localhost:5432/pitch_test
+      SESSION_TOKEN_PEPPER: Y2ktb25seS1wZXBwZXItbm90LWZvci1wcm9kdWN0aW9uLTEyMzQ=
+      MFA_ENCRYPTION_KEY: Y2ktb25seS1tZmEta2V5LW5vdC1mb3ItcHJvZC0zMmI=
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - name: Database roles (CI only, throwaway passwords)
+        env: { PGPASSWORD: ci_superuser_only }
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE ROLE pitch_migrator LOGIN PASSWORD 'ci_migrator' CREATEDB CREATEROLE;
+          CREATE ROLE pitch_app LOGIN PASSWORD 'ci_app';
+          GRANT pitch_app TO pitch_migrator WITH ADMIN OPTION, INHERIT FALSE, SET FALSE;
+          CREATE DATABASE pitch_test OWNER pitch_migrator;
+          SQL
+      - run: npm ci --ignore-scripts
+      - name: No server secrets exposed to the browser bundle
+        run: "! grep -rn 'NEXT_PUBLIC_.*\\(SECRET\\|KEY\\|PASSWORD\\|DATABASE\\|PEPPER\\)' src || (echo 'Secret-like NEXT_PUBLIC_ variable found' && exit 1)"
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: npm audit --omit=dev --audit-level=high
+
+  secrets-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0, persist-credentials: false }
+      - name: Scan history for committed secrets (gitleaks)
+        run: |
+          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.24.3 detect --source /repo --no-banner --redact

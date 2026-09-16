@@ -140,7 +140,7 @@ export function validateRecipient(rule: TransitionRule, input: ActionInput, pitc
     throw new AppError("INVALID_RECIPIENT", "The selected person does not have the right role for this level.");
   }
   const recipientActor: Actor = {
-    userId: recipient.id, roles: recipient.roles, permissions: recipient.permissions,
+    userId: recipient.id, companyId: actor.companyId, scope: "COMPANY", roles: recipient.roles, permissions: recipient.permissions,
     clearance: recipient.clearance, mfaSatisfied: true,
   };
   const wouldSee = canViewPitch(recipientActor, {

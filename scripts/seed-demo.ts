@@ -2,13 +2,18 @@
  * DEVELOPMENT/STAGING DEMO DATA ONLY — refuses to run when APP_ENV=production.
  * Creates the demo team, 13 creators and pitches in several stages, including the full
  * "The Last Journey" journey driven through the real workflow engine.
- * Usage: DEMO_USER_PASSWORD='…' npx tsx scripts/seed-demo.ts
+ * Loads into a demo company (code DEMO, domain demo.example.test) — never into a real customer company.
+ * Usage: DEMO_USER_PASSWORD='…' npx tsx scripts/seed-demo.ts   (needs DATABASE_URL and PLATFORM_DATABASE_URL)
  */
+import { config } from "dotenv";
 import { eq, inArray } from "drizzle-orm";
-import { createDb, type Db } from "../src/server/db/client";
-import { platforms, roles, userRoles, users } from "../src/server/db/schema";
+import { createDb, createPool, createTenantDb, withCompany, type Db } from "../src/server/db/client";
+import { platforms, users } from "../src/server/db/schema";
+import { createActiveUser, ensureCompany } from "../src/server/modules/tenancy/bootstrap";
 import { loadActor } from "../src/server/modules/authz/actor";
-import { hashPassword, passwordPolicyErrors } from "../src/server/modules/auth/password";
+import { passwordPolicyErrors } from "../src/server/modules/auth/password";
+
+config({ path: ".env.local", quiet: true });
 import { createCreator } from "../src/server/modules/creators/service";
 import { createPitch } from "../src/server/modules/pitches/service";
 import { performAction } from "../src/server/modules/workflow/engine";
@@ -39,18 +44,19 @@ async function main() {
   const password = process.env.DEMO_USER_PASSWORD ?? "";
   const errs = passwordPolicyErrors(password);
   if (errs.length) throw new Error(`DEMO_USER_PASSWORD rejected: ${errs.join(" ")}`);
-  const { db, pool } = createDb(process.env.DATABASE_URL!, 2);
+  const platform = createDb(process.env.PLATFORM_DATABASE_URL!, 2);
+  const appPool = createPool(process.env.DATABASE_URL!, 2);
+  const pool = { end: async () => { await platform.pool.end(); await appPool.end(); } };
   try {
+    const companyId = await ensureCompany(platform.db, (id) => createTenantDb(appPool, id), { code: "DEMO", name: "Demo Films", domains: ["demo.example.test", "example.test"] });
+    const db = createTenantDb(appPool, companyId);
+    await withCompany(companyId, async () => {
     const ids: Record<string, string> = {};
-    const hash = await hashPassword(password);
     for (const [key, name, role, clearance] of TEAM) {
       const email = `${key}@demo.example.test`;
       const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.email, email));
       if (existing) { ids[key] = existing.id; continue; }
-      const [u] = await db.insert(users).values({ email, fullName: name, passwordHash: hash, clearance }).returning({ id: users.id });
-      const [r] = await db.select({ id: roles.id }).from(roles).where(eq(roles.key, role));
-      await db.insert(userRoles).values({ userId: u!.id, roleId: r!.id });
-      ids[key] = u!.id;
+      ids[key] = await createActiveUser(platform.db, db, { email, fullName: name, roleKeys: [role], clearance, password });
     }
     const actor = async (key: string) => (await loadActor(db, ids[key]!, true))!;
 
@@ -64,6 +70,7 @@ async function main() {
       } catch { /* already seeded */ }
     }
     if (creatorIds.length === 0) { console.log("Demo data already present."); return; }
+    console.log(`Demo company: DEMO (${companyId}).`);
 
     const netflix = (await db.select({ id: platforms.id }).from(platforms).where(inArray(platforms.name, ["Netflix"])))[0]!.id;
     await lastJourney(db, creatorIds[0]!, actor, ids, netflix);
@@ -81,6 +88,7 @@ async function main() {
       if (i === 4) await step("employee.b", { action: "FORWARD", toStageKey: "EXECUTIVE_REVIEW", recipientId: ids["ceo"], remarks: "Strong commercial hook." });
     }
     console.log("Demo data loaded.");
+    });
   } finally {
     await pool.end();
   }

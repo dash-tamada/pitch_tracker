@@ -46,7 +46,7 @@ tests/unit, tests/integration, e2e/ (Playwright against a production build)
 - Node.js 22.12 or newer
 - PostgreSQL 16 (Windows installer from postgresql.org, or Docker: `docker run --name pitch-pg -e POSTGRES_PASSWORD=[PLACEHOLDER] -p 5432:5432 -d postgres:16`)
 
-### 2. Create the two database roles
+### 2. Create the database roles
 Run in `psql` as the postgres superuser. Choose your own local passwords.
 
 ```sql
@@ -58,7 +58,11 @@ CREATE DATABASE pitch_test OWNER pitch_migrator;
 GRANT pitch_app TO pitch_migrator WITH ADMIN OPTION, INHERIT FALSE, SET FALSE;
 ```
 
-`pitch_migrator` runs migrations only. The app always connects as `pitch_app`, which **cannot** alter tables, delete pitches, or edit history.
+`pitch_migrator` runs migrations only. Migration 0006 creates a third role, `pitch_platform` (sign-in and platform administration); give it a local password after migrating:
+```sql
+ALTER ROLE pitch_platform LOGIN PASSWORD '[PLACEHOLDER_LOCAL_PASSWORD_3]';
+```
+The app connects as `pitch_app` for company work — every statement is limited to one company by row-level security, and it **cannot** alter tables, delete pitches, edit history or read password hashes — and as `pitch_platform` for sign-in and the Super Admin console, which **cannot** read scripts, pitches or creators.
 
 ### 3. Configure
 ```bash
@@ -73,23 +77,23 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 ```bash
 npm ci
 npm run db:migrate          # uses MIGRATION_DATABASE_URL
-npm run db:seed             # roles, permissions, workflow, languages, genres, platforms
+npm run db:seed             # platform catalogue: permissions, plans, master platform list (uses PLATFORM_DATABASE_URL)
 ```
 Scripts read environment variables from your shell. On macOS/Linux: `set -a; . ./.env.local; set +a`. On Windows PowerShell load them with `Get-Content .env.local | ForEach-Object { if ($_ -match '^([^#=]+)=(.*)$') { Set-Item "env:$($matches[1])" $matches[2] } }`.
 
-### 5. First Super Admin
+### 5. Platform Super Admin
 ```bash
-BOOTSTRAP_ADMIN_PASSWORD='choose-a-strong-one' npm run admin:create -- you@tamadamedia.com "Your Name"
+npm run admin:create -- you@example.com "Your Name"
 ```
-PowerShell: `$env:BOOTSTRAP_ADMIN_PASSWORD='…'; npm run admin:create -- you@tamadamedia.com "Your Name"; Remove-Item env:BOOTSTRAP_ADMIN_PASSWORD`
+The script asks for the password at a hidden prompt (16+ characters; never on the command line). The Super Admin manages companies, plans and support access at `/platform`; it has no company and cannot open any company's scripts. Companies are created there, and each company's first Company Admin receives a one-time invitation link.
 
-Super Admin, Admin, CEO and COO must set up an authenticator app (TOTP) before they can act.
+Platform accounts, Company Admin, Admin, CEO and COO must set up an authenticator app (TOTP) before they can act.
 
 ### 6. Optional demo data (development/staging only)
 ```bash
 DEMO_USER_PASSWORD='Demo-Something-2026!' npm run db:seed:demo
 ```
-Creates Employee A/B/C, Senior Employee, CEO, COO, Admin, Viewer (`<name>@demo.example.test`), 13 fictional creators, and pitches in several stages — including **The Last Journey** taken all the way to Production through the real workflow engine. The script refuses to run when `APP_ENV=production`.
+Creates a separate demo company **DEMO** (never a real customer), with Employee A/B/C, Senior Employee, CEO, COO, Admin, Viewer (`<name>@demo.example.test`), 13 fictional creators, and pitches in several stages — including **The Last Journey** taken all the way to Production through the real workflow engine. The script refuses to run when `APP_ENV=production`.
 
 ### 7. Run
 ```bash
@@ -103,7 +107,7 @@ npm run typecheck
 npm run build
 npm run test:e2e            # builds, starts on :3100 against pitch_e2e, drives Chromium
 ```
-Integration tests need `TEST_DATABASE_URL` and `TEST_MIGRATION_DATABASE_URL`; the setup refuses to reset any database whose name does not contain "test".
+Integration tests need `TEST_DATABASE_URL`, `TEST_MIGRATION_DATABASE_URL` and `TEST_PLATFORM_DATABASE_URL`; the setup refuses to reset any database whose name does not contain "test", and provisions two companies so every run includes cross-company attack tests (`tests/integration/tenant-isolation.test.ts`).
 
 ## Environments
 
@@ -132,6 +136,7 @@ Production deploy order: CI green → `npm run db:migrate` with the migration ro
 | 8 | Dashboard, analytics, global search, saved filters, reports, CSV exports | Done |
 | 9 | Security hardening, E2E tests, CI | Done — open items in `SECURITY.md` §12 |
 | 10 | Production deployment | Database live on Supabase; Vercel setup is yours (`docs/DEPLOYMENT.md`) |
+| SaaS | Multi-tenant: companies, platform Super Admin, Company Admin, invitations, email policy, plans & limits, support access, per-company isolation | Built and tested locally; production upgrade is `deploy/3-multi-tenant-upgrade.sql` (`docs/DEPLOYMENT.md` §0) |
 
 ## Pushing code to GitHub
 

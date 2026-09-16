@@ -11,7 +11,7 @@ import { Empty, fmtDate, PageHeader } from "@/components/ui";
 export default async function PlatformPage({ params }: { params: Promise<{ id: string }> }) {
   const { actor } = await requirePageSession();
   const { id } = await params;
-  const db = getDb();
+  const db = getDb(actor);
   const data = await pageData(() => getPlatform(db, actor, id));
   if (!data) return <p className="notice">You do not have access to platforms.</p>;
   const { platform: p, contacts, pitches } = data;

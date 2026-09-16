@@ -12,7 +12,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
   let r: Awaited<ReturnType<typeof globalSearch>> | null = null;
   let error: string | null = null;
   if (q) {
-    try { r = await globalSearch(getDb(), actor, { q }); } catch (e) { if (e instanceof AppError) error = "Type at least 2 characters."; else throw e; }
+    try { r = await globalSearch(getDb(actor), actor, { q }); } catch (e) { if (e instanceof AppError) error = "Type at least 2 characters."; else throw e; }
   }
   const nothing = r && !r.pitches.length && !r.creators.length && !r.platforms.length && !r.people.length;
   return (

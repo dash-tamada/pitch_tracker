@@ -21,10 +21,19 @@ const id = () => uuid("id").primaryKey().default(sql`gen_random_uuid()`);
 const createdAt = () => timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
 const updatedAt = () => timestamp("updated_at", { withTimezone: true }).notNull().defaultNow();
 const archivedAt = () => timestamp("archived_at", { withTimezone: true });
+/**
+ * Owning company. The database fills it from the transaction-local tenant context (app_company_id())
+ * and row-level security rejects any other value, so application code never needs to (and must not) pass it.
+ */
+const companyId = () => uuid("company_id").notNull().default(sql`public.app_company_id()`);
 
 /* ───────────────────────────── Enums ───────────────────────────── */
 
-export const userStatus = pgEnum("user_status", ["ACTIVE", "DISABLED", "PENDING_VERIFICATION"]);
+export const userStatus = pgEnum("user_status", ["ACTIVE", "DISABLED", "PENDING_VERIFICATION", "INVITED", "SUSPENDED"]);
+export const companyStatus = pgEnum("company_status", ["PENDING_SETUP", "TRIAL", "ACTIVE", "SUSPENDED", "EXPIRED", "ARCHIVED"]);
+export const subscriptionStatus = pgEnum("subscription_status", ["TRIAL", "ACTIVE", "PAST_DUE", "SUSPENDED", "EXPIRED", "CANCELLED"]);
+export const accountScope = pgEnum("account_scope", ["PLATFORM", "COMPANY"]);
+export const permissionScope = pgEnum("permission_scope", ["PLATFORM", "COMPANY"]);
 export const confidentiality = pgEnum("confidentiality_level", ["STANDARD", "CONFIDENTIAL", "RESTRICTED"]);
 export const priority = pgEnum("priority", ["LOW", "MEDIUM", "HIGH", "URGENT"]);
 export const creatorType = pgEnum("creator_type", ["WRITER", "DIRECTOR", "WRITER_DIRECTOR", "PRODUCER", "CREATOR", "OTHER"]);
@@ -78,6 +87,18 @@ export const users = pgTable("users", {
   lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
   clearance: confidentiality("clearance").notNull().default("CONFIDENTIAL"),
   createdAt: createdAt(), updatedAt: updatedAt(), archivedAt: archivedAt(),
+  // PLATFORM accounts (Super Admin) have no company; COMPANY accounts always have one (DB check constraint).
+  companyId: uuid("company_id").default(sql`public.app_company_id()`),
+  scope: accountScope("scope").notNull().default("COMPANY"),
+  firstName: varchar("first_name", { length: 60 }),
+  lastName: varchar("last_name", { length: 60 }),
+  mobileE164: varchar("mobile_e164", { length: 16 }),
+  profileImageKey: text("profile_image_key"),
+  department: varchar("department", { length: 120 }),
+  designation: varchar("designation", { length: 120 }),
+  employeeCode: varchar("employee_code", { length: 40 }),
+  joiningDate: date("joining_date"),
+  disabledAt: timestamp("disabled_at", { withTimezone: true }),
 }, (t) => [
   uniqueIndex("users_email_uq").on(t.email),
   check("users_email_lower_ck", sql`${t.email} = lower(${t.email})`),
@@ -120,25 +141,29 @@ export const loginAttempts = pgTable("login_attempts", {
 ]);
 
 export const roles = pgTable("roles", {
+  companyId: companyId(),
   id: id(),
-  key: varchar("key", { length: 50 }).notNull(),                 // SUPER_ADMIN, ADMIN, EMPLOYEE, ...
+  key: varchar("key", { length: 50 }).notNull(),                 // COMPANY_ADMIN, ADMIN, EMPLOYEE, ...
   name: varchar("name", { length: 80 }).notNull(),
   description: text("description"),
   isSystem: boolean("is_system").notNull().default(false),        // system roles cannot be deleted
   createdAt: createdAt(), updatedAt: updatedAt(),
-}, (t) => [uniqueIndex("roles_key_uq").on(t.key)]);
+}, (t) => [uniqueIndex("roles_company_key_uq").on(t.companyId, t.key)]);
 
 export const permissions = pgTable("permissions", {
   key: varchar("key", { length: 60 }).primaryKey(),              // e.g. "pitch.reject"
   description: text("description").notNull(),
+  scope: permissionScope("scope").notNull().default("COMPANY"),
 });
 
 export const rolePermissions = pgTable("role_permissions", {
+  companyId: companyId(),
   roleId: uuid("role_id").notNull().references(() => roles.id),
   permissionKey: varchar("permission_key", { length: 60 }).notNull().references(() => permissions.key),
 }, (t) => [primaryKey({ columns: [t.roleId, t.permissionKey] })]);
 
 export const userRoles = pgTable("user_roles", {
+  companyId: companyId(),
   userId: uuid("user_id").notNull().references(() => users.id),
   roleId: uuid("role_id").notNull().references(() => roles.id),
   grantedById: uuid("granted_by_id").references(() => users.id),
@@ -148,6 +173,7 @@ export const userRoles = pgTable("user_roles", {
 /* ─────────────────────────── Configuration ─────────────────────────── */
 
 export const lookupValues = pgTable("lookup_values", {
+  companyId: companyId(),
   id: id(),
   type: lookupType("type").notNull(),
   key: varchar("key", { length: 60 }).notNull(),
@@ -156,27 +182,30 @@ export const lookupValues = pgTable("lookup_values", {
   sortOrder: integer("sort_order").notNull().default(0),
   active: boolean("active").notNull().default(true),
   createdAt: createdAt(), updatedAt: updatedAt(),
-}, (t) => [uniqueIndex("lookup_type_key_uq").on(t.type, t.key)]);
+}, (t) => [uniqueIndex("lookup_company_type_key_uq").on(t.companyId, t.type, t.key)]);
 
 export const ratingCategories = pgTable("rating_categories", {
+  companyId: companyId(),
   id: id(),
   key: varchar("key", { length: 60 }).notNull(),
   label: varchar("label", { length: 120 }).notNull(),
   sortOrder: integer("sort_order").notNull().default(0),
   active: boolean("active").notNull().default(true),
   createdAt: createdAt(), updatedAt: updatedAt(),
-}, (t) => [uniqueIndex("rating_categories_key_uq").on(t.key)]);
+}, (t) => [uniqueIndex("rating_categories_company_key_uq").on(t.companyId, t.key)]);
 
 export const systemSettings = pgTable("system_settings", {
-  key: varchar("key", { length: 80 }).primaryKey(),
+  companyId: companyId(),
+  key: varchar("key", { length: 80 }).notNull(),
   value: jsonb("value").notNull(),
   updatedById: uuid("updated_by_id").references(() => users.id),
   updatedAt: updatedAt(),
-});
+}, (t) => [primaryKey({ columns: [t.companyId, t.key] })]);
 
 /* ───────────────────────────── Workflow ───────────────────────────── */
 
 export const workflowDefinitions = pgTable("workflow_definitions", {
+  companyId: companyId(),
   id: id(),
   name: varchar("name", { length: 120 }).notNull(),
   version: integer("version").notNull(),
@@ -185,11 +214,12 @@ export const workflowDefinitions = pgTable("workflow_definitions", {
   createdById: uuid("created_by_id").references(() => users.id),
   createdAt: createdAt(),
 }, (t) => [
-  uniqueIndex("workflow_def_version_uq").on(t.name, t.version),
-  uniqueIndex("workflow_def_one_active_uq").on(t.isActive).where(sql`${t.isActive} = true`),
+  uniqueIndex("workflow_def_company_version_uq").on(t.companyId, t.name, t.version),
+  uniqueIndex("workflow_def_company_one_active_uq").on(t.companyId).where(sql`${t.isActive} = true`),
 ]);
 
 export const workflowStages = pgTable("workflow_stages", {
+  companyId: companyId(),
   id: id(),
   definitionId: uuid("definition_id").notNull().references(() => workflowDefinitions.id),
   key: varchar("key", { length: 60 }).notNull(),
@@ -202,6 +232,7 @@ export const workflowStages = pgTable("workflow_stages", {
 }, (t) => [uniqueIndex("workflow_stage_def_key_uq").on(t.definitionId, t.key)]);
 
 export const workflowTransitions = pgTable("workflow_transitions", {
+  companyId: companyId(),
   id: id(),
   definitionId: uuid("definition_id").notNull().references(() => workflowDefinitions.id),
   fromStageKey: varchar("from_stage_key", { length: 60 }).notNull(),
@@ -225,6 +256,7 @@ export const workflowTransitions = pgTable("workflow_transitions", {
 /* ─────────────────────────────── Creators ─────────────────────────────── */
 
 export const creators = pgTable("creators", {
+  companyId: companyId(),
   id: id(),
   creatorType: creatorType("creator_type").notNull(),
   fullName: varchar("full_name", { length: 120 }).notNull(),
@@ -246,14 +278,15 @@ export const creators = pgTable("creators", {
   createdById: uuid("created_by_id").notNull().references(() => users.id),
   createdAt: createdAt(), updatedAt: updatedAt(), archivedAt: archivedAt(),
 }, (t) => [
-  uniqueIndex("creators_mobile_uq").on(t.mobileE164).where(sql`${t.mobileE164} IS NOT NULL`),
-  uniqueIndex("creators_email_uq").on(t.emailNormalized).where(sql`${t.emailNormalized} IS NOT NULL`),
+  uniqueIndex("creators_company_mobile_uq").on(t.companyId, t.mobileE164).where(sql`${t.mobileE164} IS NOT NULL`),
+  uniqueIndex("creators_company_email_uq").on(t.companyId, t.emailNormalized).where(sql`${t.emailNormalized} IS NOT NULL`),
   index("creators_name_trgm_idx").using("gin", sql`${t.nameNormalized} gin_trgm_ops`),
   check("creators_mobile_format_ck", sql`${t.mobileE164} IS NULL OR ${t.mobileE164} ~ '^\\+[1-9][0-9]{7,14}$'`),
   check("creators_years_ck", sql`${t.yearsExperience} IS NULL OR ${t.yearsExperience} BETWEEN 0 AND 80`),
 ]);
 
 export const creatorProjects = pgTable("creator_projects", {
+  companyId: companyId(),
   id: id(),
   creatorId: uuid("creator_id").notNull().references(() => creators.id),
   projectName: varchar("project_name", { length: 200 }).notNull(),
@@ -277,8 +310,9 @@ export const creatorProjects = pgTable("creator_projects", {
 /* ─────────────────────────────── Pitches ─────────────────────────────── */
 
 export const pitches = pgTable("pitches", {
+  companyId: companyId(),
   id: id(),
-  pitchCode: varchar("pitch_code", { length: 20 }).notNull(),     // display only, e.g. PT-2026-000123
+  pitchCode: varchar("pitch_code", { length: 32 }).notNull(),     // display only, e.g. PT-2026-000123
   title: varchar("title", { length: 200 }).notNull(),
   logline: varchar("logline", { length: 500 }),
   shortSynopsis: text("short_synopsis"),
@@ -310,7 +344,7 @@ export const pitches = pgTable("pitches", {
   createdAt: createdAt(), updatedAt: updatedAt(), archivedAt: archivedAt(),
   archivedById: uuid("archived_by_id").references(() => users.id),
 }, (t) => [
-  uniqueIndex("pitches_code_uq").on(t.pitchCode),
+  uniqueIndex("pitches_company_code_uq").on(t.companyId, t.pitchCode),
   index("pitches_stage_idx").on(t.currentStageKey, t.stageEnteredAt),
   index("pitches_owner_idx").on(t.currentOwnerId),
   index("pitches_creator_idx").on(t.creatorId),
@@ -322,6 +356,7 @@ export const pitches = pgTable("pitches", {
 ]);
 
 export const pitchParticipants = pgTable("pitch_participants", {
+  companyId: companyId(),
   pitchId: uuid("pitch_id").notNull().references(() => pitches.id),
   userId: uuid("user_id").notNull().references(() => users.id),
   reason: participantReason("reason").notNull(),
@@ -334,6 +369,7 @@ export const pitchParticipants = pgTable("pitch_participants", {
 
 /** Append-only journey of a pitch. UPDATE/DELETE blocked by trigger and grants. */
 export const workflowEvents = pgTable("workflow_events", {
+  companyId: companyId(),
   id: id(),
   pitchId: uuid("pitch_id").notNull().references(() => pitches.id),
   seq: integer("seq").notNull(),
@@ -371,6 +407,7 @@ export const workflowEvents = pgTable("workflow_events", {
 /* ─────────────────────── Documents, versions, images ─────────────────────── */
 
 export const documents = pgTable("documents", {
+  companyId: companyId(),
   id: id(),
   pitchId: uuid("pitch_id").notNull().references(() => pitches.id),
   categoryKey: varchar("category_key", { length: 60 }).notNull(), // SCRIPT, SYNOPSIS, PITCH_DECK...
@@ -382,6 +419,7 @@ export const documents = pgTable("documents", {
 
 /** Append-only. A new script upload is always a new row. */
 export const documentVersions = pgTable("document_versions", {
+  companyId: companyId(),
   id: id(),
   documentId: uuid("document_id").notNull().references(() => documents.id),
   versionNo: integer("version_no").notNull(),
@@ -404,6 +442,7 @@ export const documentVersions = pgTable("document_versions", {
 
 /** Scan results arrive after upload; kept separate so document_versions stays immutable. */
 export const documentScanResults = pgTable("document_scan_results", {
+  companyId: companyId(),
   id: id(),
   documentVersionId: uuid("document_version_id").notNull().references(() => documentVersions.id),
   status: scanStatus("status").notNull(),
@@ -413,6 +452,7 @@ export const documentScanResults = pgTable("document_scan_results", {
 }, (t) => [index("document_scan_results_version_idx").on(t.documentVersionId, t.createdAt)]);
 
 export const pitchImages = pgTable("pitch_images", {
+  companyId: companyId(),
   id: id(),
   pitchId: uuid("pitch_id").notNull().references(() => pitches.id),
   categoryKey: varchar("category_key", { length: 60 }).notNull(),
@@ -432,6 +472,7 @@ export const pitchImages = pgTable("pitch_images", {
 
 /** Append-only: "Who downloaded this script?" */
 export const documentAccessLogs = pgTable("document_access_logs", {
+  companyId: companyId(),
   id: id(),
   documentVersionId: uuid("document_version_id").notNull().references(() => documentVersions.id),
   pitchId: uuid("pitch_id").notNull().references(() => pitches.id),
@@ -449,6 +490,7 @@ export const documentAccessLogs = pgTable("document_access_logs", {
 
 /** Append-only; a creator's rating is always computed, never overwritten. */
 export const ratings = pgTable("ratings", {
+  companyId: companyId(),
   id: id(),
   creatorId: uuid("creator_id").notNull().references(() => creators.id),
   pitchId: uuid("pitch_id").notNull().references(() => pitches.id),
@@ -465,6 +507,7 @@ export const ratings = pgTable("ratings", {
 ]);
 
 export const ratingScores = pgTable("rating_scores", {
+  companyId: companyId(),
   ratingId: uuid("rating_id").notNull().references(() => ratings.id),
   categoryId: uuid("category_id").notNull().references(() => ratingCategories.id),
   score: smallint("score").notNull(),
@@ -476,6 +519,7 @@ export const ratingScores = pgTable("rating_scores", {
 /* ─────────────────────────────── Platforms ─────────────────────────────── */
 
 export const platforms = pgTable("platforms", {
+  companyId: companyId(),
   id: id(),
   name: varchar("name", { length: 120 }).notNull(),
   kind: varchar("kind", { length: 40 }).notNull().default("OTT"), // OTT | BROADCAST | AVOD | OTHER
@@ -484,10 +528,12 @@ export const platforms = pgTable("platforms", {
   preferences: text("preferences"),
   notes: text("notes"),
   active: boolean("active").notNull().default(true),
+  catalogId: uuid("catalog_id").references(() => platformCatalog.id),
   createdAt: createdAt(), updatedAt: updatedAt(),
-}, (t) => [uniqueIndex("platforms_name_uq").on(sql`lower(${t.name})`)]);
+}, (t) => [uniqueIndex("platforms_company_name_uq").on(t.companyId, sql`lower(${t.name})`)]);
 
 export const platformContacts = pgTable("platform_contacts", {
+  companyId: companyId(),
   id: id(),
   platformId: uuid("platform_id").notNull().references(() => platforms.id),
   fullName: varchar("full_name", { length: 120 }).notNull(),
@@ -501,6 +547,7 @@ export const platformContacts = pgTable("platform_contacts", {
 }, (t) => [index("platform_contacts_platform_idx").on(t.platformId)]);
 
 export const platformPitches = pgTable("platform_pitches", {
+  companyId: companyId(),
   id: id(),
   pitchId: uuid("pitch_id").notNull().references(() => pitches.id),
   platformId: uuid("platform_id").notNull().references(() => platforms.id),
@@ -523,6 +570,7 @@ export const platformPitches = pgTable("platform_pitches", {
 
 /** Append-only platform response history. */
 export const platformResponses = pgTable("platform_responses", {
+  companyId: companyId(),
   id: id(),
   platformPitchId: uuid("platform_pitch_id").notNull().references(() => platformPitches.id),
   status: platformStatus("status").notNull(),
@@ -533,6 +581,7 @@ export const platformResponses = pgTable("platform_responses", {
 }, (t) => [index("platform_responses_pp_idx").on(t.platformPitchId, t.createdAt)]);
 
 export const followUps = pgTable("follow_ups", {
+  companyId: companyId(),
   id: id(),
   platformPitchId: uuid("platform_pitch_id").notNull().references(() => platformPitches.id),
   assigneeId: uuid("assignee_id").notNull().references(() => users.id),
@@ -547,6 +596,7 @@ export const followUps = pgTable("follow_ups", {
 /* ───────────────────────── Development & production ───────────────────────── */
 
 export const developmentProjects = pgTable("development_projects", {
+  companyId: companyId(),
   id: id(),
   pitchId: uuid("pitch_id").notNull().references(() => pitches.id),
   platformPitchId: uuid("platform_pitch_id").references(() => platformPitches.id),
@@ -560,6 +610,7 @@ export const developmentProjects = pgTable("development_projects", {
 }, (t) => [uniqueIndex("development_projects_pitch_uq").on(t.pitchId)]);
 
 export const developmentUpdates = pgTable("development_updates", {
+  companyId: companyId(),
   id: id(),
   developmentProjectId: uuid("development_project_id").notNull().references(() => developmentProjects.id),
   status: developmentStatus("status").notNull(),
@@ -571,6 +622,7 @@ export const developmentUpdates = pgTable("development_updates", {
 }, (t) => [index("development_updates_project_idx").on(t.developmentProjectId, t.createdAt)]);
 
 export const productionProjects = pgTable("production_projects", {
+  companyId: companyId(),
   id: id(),
   pitchId: uuid("pitch_id").notNull().references(() => pitches.id),
   ownerId: uuid("owner_id").notNull().references(() => users.id),
@@ -589,6 +641,7 @@ export const productionProjects = pgTable("production_projects", {
 ]);
 
 export const productionUpdates = pgTable("production_updates", {
+  companyId: companyId(),
   id: id(),
   productionProjectId: uuid("production_project_id").notNull().references(() => productionProjects.id),
   status: productionStatus("status").notNull(),
@@ -600,6 +653,7 @@ export const productionUpdates = pgTable("production_updates", {
 /* ───────────────────────────── Operational ───────────────────────────── */
 
 export const notifications = pgTable("notifications", {
+  companyId: companyId(),
   id: id(),
   userId: uuid("user_id").notNull().references(() => users.id),
   type: varchar("type", { length: 60 }).notNull(),
@@ -610,6 +664,7 @@ export const notifications = pgTable("notifications", {
 }, (t) => [index("notifications_user_idx").on(t.userId, t.readAt, t.createdAt)]);
 
 export const jobOutbox = pgTable("job_outbox", {
+  companyId: companyId(),
   id: id(),
   type: varchar("type", { length: 60 }).notNull(),
   payload: jsonb("payload").notNull(),
@@ -622,6 +677,7 @@ export const jobOutbox = pgTable("job_outbox", {
 
 /** Append-only audit trail. App role: INSERT + SELECT only. */
 export const auditLogs = pgTable("audit_logs", {
+  companyId: uuid("company_id"),                                // null only for platform-level events
   id: id(),
   actorId: uuid("actor_id").references(() => users.id),           // null for anonymous (failed login)
   action: varchar("action", { length: 80 }).notNull(),
@@ -640,6 +696,7 @@ export const auditLogs = pgTable("audit_logs", {
 ]);
 
 export const savedFilters = pgTable("saved_filters", {
+  companyId: companyId(),
   id: id(),
   userId: uuid("user_id").notNull().references(() => users.id),
   name: varchar("name", { length: 120 }).notNull(),
@@ -649,15 +706,17 @@ export const savedFilters = pgTable("saved_filters", {
 }, (t) => [uniqueIndex("saved_filters_user_name_uq").on(t.userId, t.name)]);
 
 export const pitchCodeCounters = pgTable("pitch_code_counters", {
-  year: smallint("year").primaryKey(),
+  companyId: companyId(),
+  year: smallint("year").notNull(),
   lastValue: integer("last_value").notNull().default(0),
-});
+}, (t) => [primaryKey({ columns: [t.companyId, t.year] })]);
 
 /**
  * A server-issued permission to upload exactly one object to a server-chosen quarantine key.
  * Nothing becomes downloadable until /complete validates the bytes and records a version.
  */
 export const uploadIntents = pgTable("upload_intents", {
+  companyId: companyId(),
   id: id(),
   kind: uploadKind("kind").notNull(),
   pitchId: uuid("pitch_id").references(() => pitches.id),
@@ -681,3 +740,120 @@ export const uploadIntents = pgTable("upload_intents", {
   index("upload_intents_user_idx").on(t.createdById, t.createdAt),
   check("upload_intents_target_ck", sql`(${t.kind} = 'CREATOR_PHOTO' AND ${t.creatorId} IS NOT NULL) OR (${t.kind} <> 'CREATOR_PHOTO' AND ${t.pitchId} IS NOT NULL)`),
 ]);
+
+/* ───────────────────────────── Multi-tenant platform ───────────────────────────── */
+
+export const companies = pgTable("companies", {
+  id: id(),
+  code: varchar("code", { length: 12 }).notNull(),
+  name: varchar("name", { length: 160 }).notNull(),
+  legalName: varchar("legal_name", { length: 200 }),
+  pitchCodePrefix: varchar("pitch_code_prefix", { length: 12 }),
+  logoKey: text("logo_key"),
+  faviconKey: text("favicon_key"),
+  brandPrimaryColor: varchar("brand_primary_color", { length: 7 }),
+  website: varchar("website", { length: 500 }),
+  industry: varchar("industry", { length: 120 }),
+  country: varchar("country", { length: 80 }),
+  state: varchar("state", { length: 80 }),
+  city: varchar("city", { length: 80 }),
+  address: text("address"),
+  contactPerson: varchar("contact_person", { length: 120 }),
+  contactPhone: varchar("contact_phone", { length: 20 }),
+  primaryEmail: varchar("primary_email", { length: 254 }),
+  status: companyStatus("status").notNull().default("PENDING_SETUP"),
+  statusReason: varchar("status_reason", { length: 300 }),
+  retentionDays: integer("retention_days").notNull().default(365),
+  setupCompletedAt: timestamp("setup_completed_at", { withTimezone: true }),
+  suspendedAt: timestamp("suspended_at", { withTimezone: true }),
+  archivedAt: archivedAt(),
+  createdById: uuid("created_by_id"),
+  createdAt: createdAt(), updatedAt: updatedAt(),
+}, (t) => [uniqueIndex("companies_code_uq").on(t.code)]);
+
+export const plans = pgTable("plans", {
+  key: varchar("key", { length: 40 }).primaryKey(),
+  name: varchar("name", { length: 80 }).notNull(),
+  description: text("description"),
+  limits: jsonb("limits").notNull().default(sql`'{}'::jsonb`),
+  active: boolean("active").notNull().default(true),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: createdAt(), updatedAt: updatedAt(),
+});
+
+export const subscriptions = pgTable("subscriptions", {
+  id: id(),
+  companyId: uuid("company_id").notNull().references(() => companies.id),
+  planKey: varchar("plan_key", { length: 40 }).notNull().references(() => plans.key),
+  status: subscriptionStatus("status").notNull().default("TRIAL"),
+  startsOn: date("starts_on").notNull().default(sql`CURRENT_DATE`),
+  endsOn: date("ends_on"),
+  limitOverrides: jsonb("limit_overrides").notNull().default(sql`'{}'::jsonb`),
+  externalProvider: varchar("external_provider", { length: 40 }),
+  externalRef: varchar("external_ref", { length: 120 }),
+  createdAt: createdAt(), updatedAt: updatedAt(),
+}, (t) => [uniqueIndex("subscriptions_company_uq").on(t.companyId)]);
+
+export const subscriptionEvents = pgTable("subscription_events", {
+  id: id(),
+  companyId: uuid("company_id").notNull().references(() => companies.id),
+  event: varchar("event", { length: 60 }).notNull(),
+  before: jsonb("before"),
+  after: jsonb("after"),
+  actorId: uuid("actor_id"),
+  createdAt: createdAt(),
+});
+
+export const usageRecords = pgTable("usage_records", {
+  id: id(),
+  companyId: uuid("company_id").notNull().references(() => companies.id),
+  period: date("period").notNull(),
+  metric: varchar("metric", { length: 40 }).notNull(),
+  value: bigint("value", { mode: "number" }).notNull(),
+  createdAt: createdAt(),
+}, (t) => [uniqueIndex("usage_records_uq").on(t.companyId, t.period, t.metric)]);
+
+export const supportAccessGrants = pgTable("support_access_grants", {
+  id: id(),
+  companyId: uuid("company_id").notNull().references(() => companies.id),
+  platformUserId: uuid("platform_user_id").notNull().references(() => users.id),
+  reason: varchar("reason", { length: 500 }).notNull(),
+  startsAt: timestamp("starts_at", { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  createdAt: createdAt(),
+});
+
+export const companyEmailDomains = pgTable("company_email_domains", {
+  companyId: uuid("company_id").notNull().references(() => companies.id),
+  domain: varchar("domain", { length: 253 }).notNull(),
+  createdAt: createdAt(),
+}, (t) => [primaryKey({ columns: [t.companyId, t.domain] })]);
+
+export const companyAllowedEmails = pgTable("company_allowed_emails", {
+  companyId: uuid("company_id").notNull().default(sql`public.app_company_id()`).references(() => companies.id),
+  email: varchar("email", { length: 254 }).notNull(),
+  reason: varchar("reason", { length: 300 }),
+  approvedById: uuid("approved_by_id"),
+  createdAt: createdAt(),
+}, (t) => [primaryKey({ columns: [t.companyId, t.email] })]);
+
+export const platformCatalog = pgTable("platform_catalog", {
+  id: id(),
+  name: varchar("name", { length: 120 }).notNull(),
+  kind: varchar("kind", { length: 40 }).notNull().default("OTT"),
+  active: boolean("active").notNull().default(true),
+  createdAt: createdAt(),
+});
+
+export const userInvitations = pgTable("user_invitations", {
+  id: id(),
+  companyId: uuid("company_id").notNull().default(sql`public.app_company_id()`),
+  userId: uuid("user_id").notNull(),
+  tokenHash: bytea("token_hash").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  usedAt: timestamp("used_at", { withTimezone: true }),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  invitedById: uuid("invited_by_id"),
+  createdAt: createdAt(),
+}, (t) => [uniqueIndex("user_invitations_token_uq").on(t.tokenHash)]);

@@ -18,7 +18,7 @@
     "db:migrate": "tsx scripts/migrate.ts",
     "db:seed": "tsx scripts/seed.ts",
     "db:seed:demo": "tsx scripts/seed-demo.ts",
-    "admin:create": "tsx scripts/create-super-admin.ts",
+    "admin:create": "tsx scripts/create-platform-super-admin.ts",
     "test:e2e": "playwright test",
     "setup:local": "tsx scripts/setup-local.ts"
   },

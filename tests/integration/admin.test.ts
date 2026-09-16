@@ -10,12 +10,14 @@ import { LogEmail } from "@/server/modules/jobs/email";
 import { agingAlerts, followUpReminders, processOutbox, reconcileProjections } from "@/server/modules/jobs/runner";
 import { completePasswordReset, createUser, issuePasswordResetLink, listRolesWithPermissions, requestPasswordReset, setRolePermissions, updateUser } from "@/server/modules/users/admin";
 import { loadActor } from "@/server/modules/authz/actor";
+import { acceptInvitation } from "@/server/modules/tenancy/invitations";
 import { createCreator } from "@/server/modules/creators/service";
 import { createPitch } from "@/server/modules/pitches/service";
 import { performAction } from "@/server/modules/workflow/engine";
-import { closeDb, makePitch, makeTeam, makeUser, testDb } from "../helpers/db";
+import { closeDb, makePitch, makeTeam, makeUser, platformTestDb, testDb } from "../helpers/db";
 
 const db = testDb();
+const pdb = platformTestDb();
 let team: Awaited<ReturnType<typeof makeTeam>>;
 let superAdmin: Awaited<ReturnType<typeof makeUser>>;
 const code = async (p: Promise<unknown>) => { try { await p; return "OK"; } catch (e) { return (e as { code?: string }).code ?? String(e); } };
@@ -23,45 +25,46 @@ const tokenOf = (path: string) => path.split("#")[1]!;
 
 beforeAll(async () => {
   team = await makeTeam(db);
-  superAdmin = await makeUser(db, "Root Admin", ["SUPER_ADMIN"], { clearance: "RESTRICTED" });
+  superAdmin = await makeUser(db, "Root Admin", ["COMPANY_ADMIN"], { clearance: "RESTRICTED" });
 });
 afterAll(closeDb);
 
 describe("user administration guard rails", () => {
-  it("admin creates a user with a one-time set-password link; the user sets a password and signs in", async () => {
+  it("admin invites a user with a one-time link; the user chooses a password, activates and signs in", async () => {
     const r = await createUser(db, team.admin.actor, { email: "New.Reviewer@Example.test", fullName: "New Reviewer", roleKeys: ["EMPLOYEE"] });
-    expect(r.setPasswordPath).toMatch(/^\/set-password#[A-Za-z0-9_-]{43}$/);
-    expect(await code(completePasswordReset(db, { token: tokenOf(r.setPasswordPath), password: "short" }))).toBe("VALIDATION");
-    await completePasswordReset(db, { token: tokenOf(r.setPasswordPath), password: "Film-Reels-2026!" });
-    expect(await code(completePasswordReset(db, { token: tokenOf(r.setPasswordPath), password: "Film-Reels-2027!" }))).toBe("VALIDATION"); // single use
-    const s = await login(db, { email: "new.reviewer@example.test", password: "Film-Reels-2026!" }, { ip: "10.5.5.5" });
-    expect((await resolveSession(db, s.token))?.actor.roles.has("EMPLOYEE")).toBe(true);
+    expect(r.invitePath).toMatch(/^\/accept-invite#[A-Za-z0-9_-]{43}$/);
+    expect(await code(login(pdb, { email: "new.reviewer@example.test", password: "Film-Reels-2026!" }, { ip: "10.5.5.4" }))).toBe("INVALID_CREDENTIALS"); // not active yet
+    expect(await code(acceptInvitation(pdb, { token: tokenOf(r.invitePath), password: "short" }))).toBe("VALIDATION");
+    await acceptInvitation(pdb, { token: tokenOf(r.invitePath), password: "Film-Reels-2026!" });
+    expect(await code(acceptInvitation(pdb, { token: tokenOf(r.invitePath), password: "Film-Reels-2027!" }))).toBe("VALIDATION"); // single use
+    const s = await login(pdb, { email: "new.reviewer@example.test", password: "Film-Reels-2026!" }, { ip: "10.5.5.5" });
+    expect((await resolveSession(pdb, s.token))?.actor.roles.has("EMPLOYEE")).toBe(true);
   });
-  it("admin cannot grant Super Admin, RESTRICTED clearance, change own access, or touch a Super Admin", async () => {
-    expect(await code(createUser(db, team.admin.actor, { email: "x1@example.test", fullName: "X One", roleKeys: ["SUPER_ADMIN"] }))).toBe("FORBIDDEN");
+  it("admin cannot grant Company Admin, RESTRICTED clearance, change own access, or touch a Company Admin", async () => {
+    expect(await code(createUser(db, team.admin.actor, { email: "x1@example.test", fullName: "X One", roleKeys: ["COMPANY_ADMIN"] }))).toBe("FORBIDDEN");
     expect(await code(createUser(db, team.admin.actor, { email: "x2@example.test", fullName: "X Two", roleKeys: ["EMPLOYEE"], clearance: "RESTRICTED" }))).toBe("FORBIDDEN");
     expect(await code(updateUser(db, team.admin.actor, team.admin.id, { roleKeys: ["CEO"] }))).toBe("FORBIDDEN");
     expect(await code(updateUser(db, team.admin.actor, superAdmin.id, { status: "DISABLED" }))).toBe("FORBIDDEN");
     expect(await code(issuePasswordResetLink(db, team.admin.actor, superAdmin.id))).toBe("FORBIDDEN");
     expect(await code(updateUser(db, team.employeeA.actor, team.employeeB.id, { roleKeys: ["CEO"] }))).toBe("FORBIDDEN");
   });
-  it("Super Admins cannot be locked out: no self-demotion, and only a Super Admin can demote another", async () => {
-    const second = await makeUser(db, "Second Root", ["SUPER_ADMIN"], { clearance: "RESTRICTED" });
+  it("Company Admins cannot be locked out: no self-demotion, and only a Company Admin can demote another", async () => {
+    const second = await makeUser(db, "Second Root", ["COMPANY_ADMIN"], { clearance: "RESTRICTED" });
     expect(await code(updateUser(db, second.actor, second.id, { roleKeys: ["EMPLOYEE"] }))).toBe("FORBIDDEN");   // self
-    expect(await code(updateUser(db, team.admin.actor, second.id, { roleKeys: ["EMPLOYEE"] }))).toBe("FORBIDDEN"); // not a Super Admin
-    expect(await code(updateUser(db, superAdmin.actor, second.id, { roleKeys: ["EMPLOYEE"] }))).toBe("OK");         // actor remains Super Admin
+    expect(await code(updateUser(db, team.admin.actor, second.id, { roleKeys: ["EMPLOYEE"] }))).toBe("FORBIDDEN"); // not a Company Admin
+    expect(await code(updateUser(db, superAdmin.actor, second.id, { roleKeys: ["EMPLOYEE"] }))).toBe("OK");         // actor remains Company Admin
   });
   it("role and status changes revoke sessions immediately and are audited as permission changes", async () => {
     const u = await makeUser(db, "Session Victim", ["EMPLOYEE"], { password: "Monsoon-Rains-2026!" });
-    const s = await login(db, { email: u.email, password: "Monsoon-Rains-2026!" }, { ip: "10.6.6.6" });
+    const s = await login(pdb, { email: u.email, password: "Monsoon-Rains-2026!" }, { ip: "10.6.6.6" });
     await updateUser(db, team.admin.actor, u.id, { roleKeys: ["VIEWER"] });
-    expect(await resolveSession(db, s.token)).toBeNull();
+    expect(await resolveSession(pdb, s.token)).toBeNull();
     const audit = await db.select().from(auditLogs).where(eq(auditLogs.resourceId, u.id));
     expect(audit.find((a) => a.action === "permission.changed")?.before).toMatchObject({ roles: ["EMPLOYEE"] });
   });
   it("an admin cannot give a role administration powers; permission edits log everyone out of that role", async () => {
     expect(await code(setRolePermissions(db, team.admin.actor, "EMPLOYEE", { permissionKeys: ["pitch.view", "user.manage"] }))).toBe("FORBIDDEN");
-    expect(await code(setRolePermissions(db, team.admin.actor, "SUPER_ADMIN", { permissionKeys: [] }))).toBe("FORBIDDEN");
+    expect(await code(setRolePermissions(db, team.admin.actor, "COMPANY_ADMIN", { permissionKeys: [] }))).toBe("FORBIDDEN");
     expect(await code(setRolePermissions(db, team.admin.actor, "ADMIN", { permissionKeys: [] }))).toBe("FORBIDDEN"); // own role
     const viewerPerms = (await listRolesWithPermissions(db, team.admin.actor)).roles.find((r) => r.key === "VIEWER")!.permissions;
     await setRolePermissions(db, team.admin.actor, "VIEWER", { permissionKeys: [...viewerPerms, "platform.view"] });
@@ -69,9 +72,9 @@ describe("user administration guard rails", () => {
     expect(refreshed!.permissions.has("platform.view")).toBe(true);
   });
   it("self-service reset never reveals whether an email exists and stores only a hashed token", async () => {
-    expect(await requestPasswordReset(db, { email: "nobody-at-all@example.test" })).toEqual({ ok: true });
+    expect(await requestPasswordReset(pdb, { email: "nobody-at-all@example.test" })).toEqual({ ok: true });
     const u = await makeUser(db, "Forgetful", ["EMPLOYEE"], { password: "Monsoon-Rains-2026!" });
-    expect(await requestPasswordReset(db, { email: u.email })).toEqual({ ok: true });
+    expect(await requestPasswordReset(pdb, { email: u.email })).toEqual({ ok: true });
     const email = new LogEmail();
     await processOutbox(db, email);
     expect(email.sent.some((m) => m.to === u.email && m.subject.includes("password reset"))).toBe(true);
@@ -86,7 +89,7 @@ describe("configuration without code changes", () => {
     expect(await code(upsertLookup(db, team.admin.actor, { type: "LANGUAGE", key: "bad key", label: "x" }))).toBe("VALIDATION");
     expect(await code(upsertLookup(db, team.employeeA.actor, { type: "LANGUAGE", key: "ODIA", label: "Odia" }))).toBe("FORBIDDEN");
   });
-  it("relaxing approval rules requires Super Admin; thresholds must increase", async () => {
+  it("relaxing approval rules requires Company Admin; thresholds must increase", async () => {
     expect(await code(updateSettings(db, team.admin.actor, { allow_self_approval: true }))).toBe("FORBIDDEN");
     expect(await code(updateSettings(db, team.admin.actor, { aging_thresholds_days: { attention: 5, overdue: 3, critical: 14 } }))).toBe("VALIDATION");
     await updateSettings(db, team.admin.actor, { aging_thresholds_days: { attention: 2, overdue: 6, critical: 12 } });

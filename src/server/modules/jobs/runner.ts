@@ -1,4 +1,8 @@
-/** Background jobs: email outbox, follow-up reminders, aging alerts, projection reconciliation, retention clean-up. */
+/**
+ * Background jobs: email outbox, follow-up reminders, aging alerts, projection reconciliation, retention clean-up.
+ * Company jobs take a company-scoped handle and are run once per company (see runAllCompanies), so a job can never
+ * read or notify across companies. Identity clean-up runs separately on the identity connection.
+ */
 import { and, asc, eq, inArray, isNull, lt, lte, sql } from "drizzle-orm";
 import type { Db } from "@/server/db/client";
 import {
@@ -33,6 +37,11 @@ export async function processOutbox(db: Db, email: EmailPort, limit = 50) {
           await email.send({ to: n.email, subject: "Pitch Tracker: you have a new update", text: `${n.title}\n\nOpen Pitch Tracker to see details: ${link}\n\n(Details are only visible after signing in.)` });
         }
         await db.update(jobOutbox).set({ status: "DONE" }).where(eq(jobOutbox.id, job.id));
+      } else if (job.type === "EMAIL_INVITATION") {
+        const { userId, token } = job.payload as { userId: string; token?: string };
+        const [u] = await db.select({ email: users.email, status: users.status }).from(users).where(eq(users.id, userId));
+        if (u && token && u.status === "INVITED") await email.send({ to: u.email, subject: "You're invited to Pitch Tracker", text: `You have been invited to join your company's Pitch Tracker.\n\nChoose your password within 72 hours:\n${APP_ORIGIN()}/accept-invite#${token}\n\nIf you were not expecting this, ignore this email.` });
+        await db.update(jobOutbox).set({ status: "DONE", payload: { userId } }).where(eq(jobOutbox.id, job.id));
       } else if (job.type === "EMAIL_PASSWORD_RESET") {
         const { userId, token } = job.payload as { userId: string; token?: string };
         const [u] = await db.select({ email: users.email }).from(users).where(eq(users.id, userId));
@@ -114,9 +123,14 @@ export async function reconcileProjections(db: Db, batch = 500) {
   return { checked: rows.length, drift: drift.length };
 }
 
+/** Identity connection: expired sessions and old sign-in attempts. */
+export async function identityCleanup(platformDb: Db, now = new Date()) {
+  await platformDb.delete(sessions).where(lt(sessions.expiresAt, new Date(now.getTime() - 7 * 86_400_000)));
+  await platformDb.delete(loginAttempts).where(lt(loginAttempts.createdAt, new Date(now.getTime() - 90 * 86_400_000)));
+}
+
+/** Company handle: abandoned uploads of this company only. */
 export async function retentionCleanup(db: Db, storage: StoragePort, now = new Date()) {
-  await db.delete(sessions).where(lt(sessions.expiresAt, new Date(now.getTime() - 7 * 86_400_000)));
-  await db.delete(loginAttempts).where(lt(loginAttempts.createdAt, new Date(now.getTime() - 90 * 86_400_000)));
   const stale = await db.select({ id: uploadIntents.id, key: uploadIntents.quarantineKey }).from(uploadIntents)
     .where(and(isNull(uploadIntents.completedAt), isNull(uploadIntents.rejectedReason), lt(uploadIntents.expiresAt, now))).limit(500);
   if (stale.length) {

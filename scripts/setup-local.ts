@@ -5,10 +5,11 @@
  * What it does (every secret stays on this computer; nothing is printed or logged):
  *  1. Asks for the Supabase connection details and the certificate file.
  *  2. Connects as `postgres` over TLS with the certificate verified.
- *  3. Sets the `pitch_app` password as a SCRAM-SHA-256 verifier computed here, so the plain password never reaches the server.
- *  4. Signs in as `pitch_app` through the transaction pooler to prove the app's connection works.
+ *  3. Sets the `pitch_app` (company work) and `pitch_platform` (sign-in & platform admin) passwords as SCRAM-SHA-256
+ *     verifiers computed here, so the plain passwords never reach the server.
+ *  4. Signs in as both roles through the transaction pooler to prove the connections work.
  *  5. Writes .env.local (git-ignored) with fresh random keys.
- *  6. Optionally creates the first Super Admin.
+ *  6. Optionally creates or resets the platform Super Admin (password typed at a hidden prompt).
  *
  * Non-interactive testing: every prompt can be pre-filled with an environment variable named SETUP_<KEY>.
  */
@@ -18,37 +19,9 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import pg from "pg";
 import { connectionConfig, decodeCaCert } from "../src/server/db/ssl";
+import { ask } from "./lib/prompt";
 
 const ENV_FILE = resolve(process.cwd(), ".env.local");
-
-function ask(key: string, question: string, opts: { hidden?: boolean; optional?: boolean } = {}): Promise<string> {
-  const preset = process.env[`SETUP_${key}`];
-  if (preset !== undefined) return Promise.resolve(preset);
-  return new Promise((done, fail) => {
-    const stdin = process.stdin;
-    process.stdout.write(question);
-    if (!stdin.isTTY) return fail(new Error(`No terminal available for "${key}". Run this in PowerShell.`));
-    let value = "";
-    stdin.setRawMode(true);
-    stdin.resume();
-    stdin.setEncoding("utf8");
-    const onData = (chunk: string) => {
-      for (const ch of chunk) {
-        if (ch === "\r" || ch === "\n") {
-          stdin.setRawMode(false); stdin.pause(); stdin.off("data", onData);
-          process.stdout.write("\n");
-          if (!value && !opts.optional) { ask(key, question, opts).then(done, fail); return; }
-          return done(value.trim());
-        }
-        if (ch === "\u0003") { stdin.setRawMode(false); process.stdout.write("\nCancelled.\n"); process.exit(130); }
-        if (ch === "\u007f" || ch === "\b") { if (value) { value = value.slice(0, -1); if (!opts.hidden) process.stdout.write("\b \b"); } continue; }
-        value += ch;
-        process.stdout.write(opts.hidden ? "*" : ch);
-      }
-    };
-    stdin.on("data", onData);
-  });
-}
 
 /** PostgreSQL SCRAM-SHA-256 verifier (RFC 5802 / RFC 7677), the same format Postgres stores in pg_authid. */
 export function scramVerifier(password: string, salt = randomBytes(16), iterations = 4096): string {
@@ -107,26 +80,36 @@ async function main() {
     console.log(`  That password ${problem}.`);
     appPassword = await ask("APP_PASSWORD_RETRY", "pitch_app password: ", { hidden: true });
   }
+  let platformPassword = await ask("PLATFORM_PASSWORD", "Choose a NEW password for pitch_platform (20+ chars, no quotes/spaces, different from pitch_app): ", { hidden: true });
+  for (let problem = strongEnough(platformPassword) ?? (platformPassword === appPassword ? "must differ from the pitch_app password" : null); problem;
+    problem = strongEnough(platformPassword) ?? (platformPassword === appPassword ? "must differ from the pitch_app password" : null)) {
+    console.log(`  That password ${problem}.`);
+    platformPassword = await ask("PLATFORM_PASSWORD_RETRY", "pitch_platform password: ", { hidden: true });
+  }
   const secretKey = await ask("SECRET_KEY", "Supabase secret key for Storage (Project Settings → API Keys → Secret keys): ", { hidden: true });
   if (!/^sb_secret_[A-Za-z0-9_-]{10,}$/.test(secretKey) && !/^eyJ[\w-]+\.[\w-]+\.[\w-]+$/.test(secretKey)) {
     throw new Error("That does not look like a Supabase secret key (sb_secret_…) or a service_role key.");
   }
-  const secrets = [pgPassword, appPassword, secretKey];
+  const secrets = [pgPassword, appPassword, platformPassword, secretKey];
 
   console.log("\n1/4 Connecting as postgres (certificate verified)…");
   const admin = await tryConnect(`postgresql://postgres.${ref}:${encodeURIComponent(pgPassword)}@${host}:5432/postgres`, ca, "Could not connect as postgres", secrets);
   try {
-    const { rows } = await admin.query<{ ok: boolean }>("select exists(select 1 from pg_roles where rolname = 'pitch_app') as ok");
-    if (!rows[0]?.ok) throw new Error("Role pitch_app does not exist. Run deploy/1-supabase-setup.sql first.");
-    console.log("2/4 Setting the pitch_app password (hashed on this computer)…");
-    const verifier = scramVerifier(appPassword);
-    if (!/^SCRAM-SHA-256\$\d+:[A-Za-z0-9+/=]+\$[A-Za-z0-9+/=]+:[A-Za-z0-9+/=]+$/.test(verifier)) throw new Error("internal: bad verifier");
-    await admin.query(`ALTER ROLE pitch_app WITH LOGIN PASSWORD '${verifier}'`);
+    const { rows } = await admin.query<{ app: boolean; platform: boolean }>(
+      "select exists(select 1 from pg_roles where rolname = 'pitch_app') as app, exists(select 1 from pg_roles where rolname = 'pitch_platform') as platform");
+    if (!rows[0]?.app) throw new Error("Role pitch_app does not exist. Run the initial database setup first.");
+    if (!rows[0]?.platform) throw new Error("Role pitch_platform does not exist. Run deploy/3-multi-tenant-upgrade.sql first.");
+    console.log("2/4 Setting the pitch_app and pitch_platform passwords (hashed on this computer)…");
+    for (const [role, pw] of [["pitch_app", appPassword], ["pitch_platform", platformPassword]] as const) {
+      const verifier = scramVerifier(pw);
+      if (!/^SCRAM-SHA-256\$\d+:[A-Za-z0-9+/=]+\$[A-Za-z0-9+/=]+:[A-Za-z0-9+/=]+$/.test(verifier)) throw new Error("internal: bad verifier");
+      await admin.query(`ALTER ROLE ${role} WITH LOGIN PASSWORD '${verifier}'`);
+    }
   } finally {
     await admin.end();
   }
 
-  console.log("3/4 Signing in as pitch_app through the transaction pooler…");
+  console.log("3/4 Signing in as pitch_app and pitch_platform through the transaction pooler…");
   const databaseUrl = `postgresql://pitch_app.${ref}:${encodeURIComponent(appPassword)}@${host}:6543/postgres`;
   let app: pg.Client;
   try {
@@ -139,12 +122,26 @@ async function main() {
     app = await tryConnect(databaseUrl, ca, "Could not sign in as pitch_app via the transaction pooler", secrets);
   }
   try {
-    const { rows } = await app.query<{ usr: string; roles: number; ssl: boolean }>(
-      "select current_user as usr, (select count(*)::int from roles) as roles, coalesce((select ssl from pg_stat_ssl where pid = pg_backend_pid()), false) as ssl");
-    if (rows[0]?.usr !== "pitch_app" || rows[0].roles !== 7) throw new Error(`Unexpected database state: ${JSON.stringify(rows[0])}`);
-    console.log(`  Connected as pitch_app; 7 roles present; TLS reported by server: ${rows[0].ssl ? "yes" : "not reported (pooler terminates TLS)"}.`);
+    // Without a company context the company role must see nothing (row-level security fails closed).
+    const { rows } = await app.query<{ usr: string; visible: number }>("select current_user as usr, (select count(*)::int from roles) as visible");
+    if (rows[0]?.usr !== "pitch_app" || rows[0].visible !== 0) throw new Error(`Unexpected database state for pitch_app: ${JSON.stringify(rows[0])}`);
+    console.log("  pitch_app connected; sees no company data without a company context (expected).");
   } finally {
     await app.end();
+  }
+  const platformUrl = `postgresql://pitch_platform.${ref}:${encodeURIComponent(platformPassword)}@${host}:6543/postgres`;
+  let plat: pg.Client;
+  try { plat = await tryConnect(platformUrl, ca, "transaction pooler", secrets); } catch {
+    console.log("  First attempt failed; retrying in 10 seconds…");
+    await new Promise((r) => setTimeout(r, 10_000));
+    plat = await tryConnect(platformUrl, ca, "Could not sign in as pitch_platform via the transaction pooler", secrets);
+  }
+  try {
+    const { rows } = await plat.query<{ usr: string; companies: number }>("select current_user as usr, (select count(*)::int from companies) as companies");
+    if (rows[0]?.usr !== "pitch_platform" || rows[0].companies < 1) throw new Error(`Unexpected database state for pitch_platform: ${JSON.stringify(rows[0])}`);
+    console.log(`  pitch_platform connected; ${rows[0].companies} company(ies) found.`);
+  } finally {
+    await plat.end();
   }
 
   console.log("4/4 Writing .env.local…");
@@ -156,6 +153,7 @@ async function main() {
     "APP_ORIGIN=http://localhost:3000",
     "TRUST_PROXY=false",
     `DATABASE_URL=${databaseUrl}`,
+    `PLATFORM_DATABASE_URL=${platformUrl}`,
     `DATABASE_CA_CERT=${Buffer.from(ca).toString("base64")}`,
     "# MFA_ENCRYPTION_KEY must be IDENTICAL in Vercel, otherwise MFA set up locally cannot be read in production.",
     `MFA_ENCRYPTION_KEY=${b64(32)}`,
@@ -170,16 +168,14 @@ async function main() {
   const ignored = spawnSync("git", ["check-ignore", "-q", ".env.local"]).status === 0;
   console.log(`  Saved. Git ignores it: ${ignored ? "yes" : "NO — do not commit!"}`);
 
-  const create = (await ask("CREATE_ADMIN", "\nCreate the first Super Admin now? (yes/no): ")).toLowerCase();
+  const create = (await ask("CREATE_ADMIN", "\nCreate or reset the platform Super Admin now? (yes/no): ")).toLowerCase();
   if (create === "yes") {
-    const email = await ask("ADMIN_EMAIL", "Admin email: ");
-    const name = await ask("ADMIN_NAME", "Admin full name: ");
-    const adminPw = await ask("ADMIN_PASSWORD", "Admin sign-in password (12+ chars, mixed): ", { hidden: true });
-    const r = spawnSync(process.execPath, ["--import", "tsx", "scripts/create-super-admin.ts", email, name], {
+    // The script asks for the email, name and password itself (hidden); nothing is passed on the command line.
+    const r = spawnSync(process.execPath, ["--import", "tsx", "scripts/create-platform-super-admin.ts"], {
       stdio: "inherit",
-      env: { ...process.env, DATABASE_URL: databaseUrl, DATABASE_CA_CERT: ca, APP_ENV: "development", BOOTSTRAP_ADMIN_PASSWORD: adminPw },
+      env: { ...process.env, PLATFORM_DATABASE_URL: platformUrl, DATABASE_CA_CERT: ca, APP_ENV: "development" },
     });
-    if (r.status !== 0) console.log("Super Admin was not created (see message above). Fix the issue and run npm run setup:local again (answer yes to replace .env.local).");
+    if (r.status !== 0) console.log("Super Admin was not created (see message above). You can run it again later with: npm run admin:create");
   }
 
   console.log("\nDone. Start the app with:  npm run dev   then open http://localhost:3000");

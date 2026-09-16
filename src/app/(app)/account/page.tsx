@@ -7,7 +7,7 @@ import { PageHeader } from "@/components/ui";
 
 export default async function AccountPage() {
   const { actor } = await requirePageSession();
-  const [u] = await getDb().select({ fullName: users.fullName, email: users.email, mfaEnabled: users.mfaEnabled, clearance: users.clearance }).from(users).where(eq(users.id, actor.userId));
+  const [u] = await getDb(actor).select({ fullName: users.fullName, email: users.email, mfaEnabled: users.mfaEnabled, clearance: users.clearance }).from(users).where(eq(users.id, actor.userId));
   return (
     <>
       <PageHeader title="My account" />

@@ -20,7 +20,7 @@ export default async function PitchesPage({ searchParams }: { searchParams: Prom
   const one = (k: string) => (Array.isArray(sp[k]) ? (sp[k] as string[]).join(",") : (sp[k] as string | undefined));
   const query: Record<string, string> = {};
   for (const k of FILTER_KEYS) { const v = one(k); if (v) query[k] = v; }
-  const db = getDb();
+  const db = getDb(actor);
   let page;
   let error: string | null = null;
   try {

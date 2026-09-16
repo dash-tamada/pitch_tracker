@@ -1,8 +1,10 @@
 import Link from "next/link";
+import { headers } from "next/headers";
 import { getDb } from "@/server/db/client";
 import { requirePageSession } from "@/server/lib/page-session";
 import type { Permission } from "@/server/modules/authz/permissions";
 import { unreadCount } from "@/server/modules/notifications/service";
+import { companyBranding } from "@/server/modules/tenancy/company";
 import { LogoutButton } from "@/components/logout-button";
 
 const NAV: { href: string; label: string; anyOf: Permission[] }[] = [
@@ -18,17 +20,23 @@ const NAV: { href: string; label: string; anyOf: Permission[] }[] = [
   { href: "/notifications", label: "Notifications", anyOf: ["pitch.view", "creator.view", "user.manage"] },
   { href: "/users", label: "Users", anyOf: ["user.manage", "role.manage"] },
   { href: "/settings", label: "Settings", anyOf: ["config.manage", "workflow.manage", "audit.view"] },
+  { href: "/company", label: "Company", anyOf: ["company.manage"] },
 ];
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const { actor } = await requirePageSession();
   // Hiding links is convenience only — every API and page re-checks permissions on the server.
   const items = NAV.filter((n) => n.anyOf.some((p) => actor.permissions.has(p)));
-  const unread = await unreadCount(getDb(), actor);
+  const db = getDb(actor);
+  const [unread, brand] = await Promise.all([unreadCount(db, actor), companyBranding(db)]);
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
+  // Colour is validated as #RRGGBB by the API and a database check constraint before it can reach this style tag.
+  const color = brand?.color && /^#[0-9A-Fa-f]{6}$/.test(brand.color) ? brand.color : null;
   return (
     <div className="shell">
+      {color && <style nonce={nonce}>{`:root{--accent:${color}}`}</style>}
       <nav className="nav" aria-label="Main">
-        <div className="brand">Pitch Tracker<small>Story Pipeline Control Center</small></div>
+        <div className="brand">{brand?.name ?? "Pitch Tracker"}<small>Pitch Tracker · Story Pipeline</small></div>
         {items.map((n) => <Link key={n.href} href={n.href}>{n.label}</Link>)}
         <Link href="/account">My account</Link>
       </nav>
@@ -43,6 +51,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <LogoutButton />
           </div>
         </div>
+        {brand && !brand.setupCompletedAt && actor.permissions.has("company.manage") && (
+          <p className="notice">Your company setup is not finished. <Link href="/company">Complete setup</Link></p>
+        )}
         {children}
       </main>
     </div>

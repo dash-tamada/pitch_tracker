@@ -8,7 +8,7 @@ import { Empty, fmtDateTime, PageHeader } from "@/components/ui";
 export default async function NotificationsPage({ searchParams }: { searchParams: Promise<{ unread?: string; cursor?: string }> }) {
   const { actor } = await requirePageSession();
   const sp = await searchParams;
-  const page = await listNotifications(getDb(), actor, { ...(sp.unread === "1" ? { unread: "1" } : {}), ...(sp.cursor ? { cursor: sp.cursor } : {}) });
+  const page = await listNotifications(getDb(actor), actor, { ...(sp.unread === "1" ? { unread: "1" } : {}), ...(sp.cursor ? { cursor: sp.cursor } : {}) });
   return (
     <>
       <PageHeader title="Notifications" subtitle={`${page.unread} unread`} actions={<>

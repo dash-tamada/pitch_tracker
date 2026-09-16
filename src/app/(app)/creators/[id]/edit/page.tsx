@@ -10,7 +10,7 @@ export default async function EditCreatorPage({ params }: { params: Promise<{ id
   const { actor } = await requirePageSession();
   const { id } = await params;
   if (!can(actor, "creator.edit")) return <p className="notice">You do not have permission to edit creators.</p>;
-  const db = getDb();
+  const db = getDb(actor);
   const profile = await pageData(() => getCreatorProfile(db, actor, id));
   if (!profile) return <p className="notice">You do not have access to this creator.</p>;
   const lookups = await getLookups(db);

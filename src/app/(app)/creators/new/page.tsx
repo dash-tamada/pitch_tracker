@@ -8,7 +8,7 @@ import { PageHeader } from "@/components/ui";
 export default async function NewCreatorPage() {
   const { actor } = await requirePageSession();
   if (!can(actor, "creator.create")) return <p className="notice">You do not have permission to create creators.</p>;
-  const lookups = await getLookups(getDb());
+  const lookups = await getLookups(getDb(actor));
   const active = (t: string) => (lookups[t] ?? []).filter((l) => l.active);
   return (
     <>

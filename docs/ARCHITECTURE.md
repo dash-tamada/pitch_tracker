@@ -109,6 +109,35 @@ One deployable web app + one background worker, sharing a codebase. A modular mo
 
 ---
 
+## 2a. Multi-tenant architecture (SaaS release)
+
+Shared database, shared schema, row-level isolation. Design and audit: `docs/SAAS_MULTI_TENANT_PLAN.md`.
+
+```
+Browser ──> route() / page ──> resolveSession (pitch_platform: sessions, users, companies)
+                               │  actor = { userId, companyId, scope, roles, permissions }
+                               ├─ scope COMPANY  → withCompany(companyId) → getDb() = TenantPool(pitch_app)
+                               │                    every statement: BEGIN; set_config('app.company_id', id, true); …; COMMIT
+                               │                    RLS: company_id = app_company_id()  (reads AND writes)
+                               └─ scope PLATFORM → getPlatformDb() (pitch_platform) → /platform console
+                                                    no privileges on pitches, creators, documents, ratings, events
+```
+
+| Concept | Where |
+|---|---|
+| Company, plan, subscription, subscription events, usage, support grants, email domains/exceptions, platform catalogue, invitations | `companies`, `plans`, `subscriptions`, `subscription_events`, `usage_records`, `support_access_grants`, `company_email_domains`, `company_allowed_emails`, `platform_catalog`, `user_invitations` (migration `0006_multi_tenant.sql`) |
+| Tenant context and handles | `src/server/db/client.ts` (`TenantPool`, `getDb`, `withCompany`, `getPlatformDb`) |
+| Route scoping | `src/server/lib/http.ts` (`scope: COMPANY | PLATFORM | ANY`), `src/server/lib/page-session.ts` |
+| Provisioning (defaults per company) | `src/server/modules/tenancy/provision.ts` |
+| Invitations + email policy | `src/server/modules/tenancy/invitations.ts` |
+| Plan limits | `src/server/modules/tenancy/limits.ts` |
+| Company profile/branding/exceptions | `src/server/modules/tenancy/company.ts`, page `/company` |
+| Super Admin (companies, status, subscriptions, plans, domains, support access, platform audit) | `src/server/modules/platform/service.ts`, pages `/platform/*`, API `/api/v1/platform/*` |
+| Roles | Platform: `users.scope = PLATFORM` (no company, no company roles). Company: `COMPANY_ADMIN` (all company permissions, incl. `company.manage`), `ADMIN`, `CEO`, `COO`, `SENIOR_EMPLOYEE`, `EMPLOYEE`, `VIEWER` — per company, editable |
+| Codes | Pitch codes per company: `<prefix>-<year>-<n>` (prefix defaults to company code; TAM keeps `PT`) |
+| Storage keys | `company/<company_id>/pitches/<pitch_id>/documents/<version_id>.<ext>` etc. |
+| Jobs | `/api/cron/run` loops companies; identity clean-up and subscription expiry on the platform role |
+
 ## 3. Database schema / ER diagram
 
 Full definition: `src/server/db/schema.ts` → generated `drizzle/0000_init.sql`, plus hand-written `drizzle/0001_integrity.sql` for triggers and grants. Conventions: UUID v4 primary keys (non-sequential), `created_at`/`updated_at` everywhere, `archived_at` for soft deletion, human-readable `pitch_code` (`PT-2026-000123`) for display only — never used for authorization.

@@ -20,7 +20,7 @@ export default async function CreatorProfilePage({ params, searchParams }: { par
   const { id } = await params;
   const requested = (await searchParams).tab;
   const tab = TABS.some((t) => t.key === requested) ? requested! : "overview";
-  const db = getDb();
+  const db = getDb(actor);
   const profile = await pageData(() => getCreatorProfile(db, actor, id));
   if (!profile) return <p className="notice">You do not have access to creators.</p>;
   const { creator: c, projects, stats } = profile;
@@ -178,7 +178,7 @@ function ActivityTab({ rows, names }: { rows: Awaited<ReturnType<typeof creatorA
 }
 
 async function ActivityLoader({ actor, id }: { actor: Parameters<typeof creatorActivity>[1]; id: string }) {
-  const db = getDb();
+  const db = getDb(actor);
   const rows = await creatorActivity(db, actor, id);
   return <ActivityTab rows={rows} names={await userNames(db, rows.map((a) => a.actorId))} />;
 }

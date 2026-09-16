@@ -6,7 +6,7 @@ import { Empty, fmtDate, PageHeader } from "@/components/ui";
 
 export default async function ProductionPage() {
   const { actor } = await requirePageSession();
-  const rows = await pageData(() => productionPipeline(getDb(), actor));
+  const rows = await pageData(() => productionPipeline(getDb(actor), actor));
   if (!rows) return <p className="notice">You do not have access to the production tracker.</p>;
   return (
     <>

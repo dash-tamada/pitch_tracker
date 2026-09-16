@@ -17,7 +17,7 @@ const rules: TransitionRule[] = DEFAULT_TRANSITIONS.map((t, i) => ({
 const stages = new Map(DEFAULT_STAGES.map((s) => [s.key, { key: s.key, category: s.category, requiresOwner: s.requiresOwner ?? true }]));
 
 const actor = (id: string, role: RoleKey, clearance: Actor["clearance"] = "CONFIDENTIAL"): Actor => ({
-  userId: id, roles: new Set([role]), permissions: new Set(DEFAULT_ROLE_MATRIX[role].permissions), clearance, mfaSatisfied: true,
+  userId: id, companyId: "c", scope: "COMPANY", roles: new Set([role]), permissions: new Set(DEFAULT_ROLE_MATRIX[role].permissions), clearance, mfaSatisfied: true,
 });
 const A = actor("a", "EMPLOYEE"), B = actor("b", "EMPLOYEE"), CEO = actor("ceo", "CEO", "RESTRICTED"), VIEWER = actor("v", "VIEWER");
 const ADMIN = actor("adm", "ADMIN");
@@ -52,7 +52,7 @@ describe("default workflow configuration", () => {
     for (const r of rejects) expect(r.requiresRejectionReason).toBe(true);
   });
   it("only executive roles can send to platform, approve or greenlight", () => {
-    for (const r of rules.filter((x) => x.isApproval)) expect(r.allowedRoleKeys).toEqual(["CEO", "COO", "SUPER_ADMIN"]);
+    for (const r of rules.filter((x) => x.isApproval)) expect(r.allowedRoleKeys).toEqual(["CEO", "COO", "COMPANY_ADMIN"]);
   });
 });
 

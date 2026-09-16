@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
-import { getDb } from "@/server/db/client";
+import { getPlatformDb, withCompany } from "@/server/db/client";
 import { AppError } from "@/server/lib/errors";
 import { hit } from "@/server/lib/rate-limit";
 import { safeEqual } from "@/server/modules/auth/tokens";
@@ -48,7 +48,20 @@ export async function readJson(req: NextRequest): Promise<unknown> {
   }
 }
 
-interface RouteOptions { auth?: boolean; allowWithoutMfa?: boolean; rateLimit?: { limit: number; windowMs: number } }
+interface RouteOptions {
+  auth?: boolean;
+  allowWithoutMfa?: boolean;
+  /** Only the route that completes a platform-assigned temp password may run before that password is changed. */
+  allowWithoutPasswordChange?: boolean;
+  rateLimit?: { limit: number; windowMs: number };
+  /**
+   * Who may call an authenticated route (default COMPANY):
+   *  - COMPANY: company accounts only; the handler runs with that company's database context
+   *  - PLATFORM: platform (Super Admin) accounts only; no company context
+   *  - ANY: either (identity endpoints such as /auth/me, logout, MFA)
+   */
+  scope?: "COMPANY" | "PLATFORM" | "ANY";
+}
 type Handler<P> = (args: { req: NextRequest; ctx: RequestContext; session: SessionInfo | null; params: P }) => Promise<Response>;
 
 export function route<P = Record<string, never>>(opts: RouteOptions, handler: Handler<P>) {
@@ -62,12 +75,18 @@ export function route<P = Record<string, never>>(opts: RouteOptions, handler: Ha
       checkCsrf(req);
       let session: SessionInfo | null = null;
       if (opts.auth !== false) {
-        session = await resolveSession(getDb(), req.cookies.get(SESSION_COOKIE())?.value);
+        session = await resolveSession(getPlatformDb(), req.cookies.get(SESSION_COOKIE())?.value);
         if (!session) throw new AppError("UNAUTHENTICATED", "Please sign in.");
+        if (session.passwordChangeRequired && !opts.allowWithoutPasswordChange) throw new AppError("PASSWORD_CHANGE_REQUIRED", "Set a new password to continue.");
         if (!session.mfaVerified && !opts.allowWithoutMfa) throw new AppError("MFA_REQUIRED", "Verify your second factor to continue.");
+        const scope = opts.scope ?? "COMPANY";
+        if (scope !== "ANY" && session.actor.scope !== scope) throw new AppError("FORBIDDEN", "You do not have permission to do this.");
       }
       const params = (await routeCtx.params) ?? ({} as P);
-      const res = await handler({ req, ctx, session, params });
+      const companyId = session?.actor.scope === "COMPANY" ? session.actor.companyId : null;
+      // The company context comes only from the verified session — never from the URL, body or headers.
+      const run = () => handler({ req, ctx, session, params });
+      const res = companyId ? await withCompany(companyId, run) : await run();
       res.headers.set("x-request-id", ctx.requestId!);
       return res;
     } catch (err) {

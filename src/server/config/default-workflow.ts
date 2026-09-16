@@ -57,9 +57,9 @@ export const DEFAULT_STAGES: StageDef[] = [
 ];
 
 const REVIEW_STAGES = ["INITIAL_REVIEW", "INTERNAL_REVIEW", "SENIOR_REVIEW"] as const;
-const EXEC: RoleKey[] = ["CEO", "COO", "SUPER_ADMIN"];
-const SENIOR_UP: RoleKey[] = ["SENIOR_EMPLOYEE", "CEO", "COO", "SUPER_ADMIN"];
-const REVIEWERS: RoleKey[] = ["EMPLOYEE", "SENIOR_EMPLOYEE", "CEO", "COO", "SUPER_ADMIN"];
+const EXEC: RoleKey[] = ["CEO", "COO", "COMPANY_ADMIN"];
+const SENIOR_UP: RoleKey[] = ["SENIOR_EMPLOYEE", "CEO", "COO", "COMPANY_ADMIN"];
+const REVIEWERS: RoleKey[] = ["EMPLOYEE", "SENIOR_EMPLOYEE", "CEO", "COO", "COMPANY_ADMIN"];
 
 const LEVEL_ORDER = ["INITIAL_REVIEW", "INTERNAL_REVIEW", "SENIOR_REVIEW", "EXECUTIVE_REVIEW"] as const;
 const RECIPIENTS_FOR: Record<(typeof LEVEL_ORDER)[number], RoleKey[]> = {

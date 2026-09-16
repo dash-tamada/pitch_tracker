@@ -10,6 +10,11 @@ export interface RequestContext {
 
 export interface AuditEntry {
   actorId: string | null;
+  /**
+   * Company the event belongs to. Omit in company work (the database fills it from the tenant context).
+   * Set explicitly only on the identity/platform connection, e.g. sign-in events of a company user.
+   */
+  companyId?: string | null;
   action: string;                 // e.g. "pitch.rejected", "auth.login_failed", "document.downloaded"
   resourceType: string;
   resourceId?: string | null;
@@ -20,6 +25,7 @@ export interface AuditEntry {
 /** Append-only. Sensitive keys are redacted before storage; the table cannot be updated or deleted by the app role. */
 export async function writeAudit(db: DbOrTx, entry: AuditEntry, ctx: RequestContext = {}): Promise<void> {
   await db.insert(auditLogs).values({
+    ...(entry.companyId !== undefined ? { companyId: entry.companyId } : {}),
     actorId: entry.actorId,
     action: entry.action,
     resourceType: entry.resourceType,

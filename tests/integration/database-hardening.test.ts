@@ -5,18 +5,38 @@ const pool = new pg.Pool({ connectionString: process.env.TEST_MIGRATION_DATABASE
 afterAll(() => pool.end());
 
 describe("database hardening (Supabase Data API exposure)", () => {
-  it("every table in public has Row Level Security enabled with only the app-server policy", async () => {
+  it("every table has Row Level Security; policies exist only for the two server roles; company work is never unrestricted", async () => {
     const { rows } = await pool.query(`
-      SELECT c.relname, c.relrowsecurity,
-             (SELECT array_agg(p.polname || ':' || array_to_string(ARRAY(SELECT rolname FROM pg_roles WHERE oid = ANY(p.polroles)), ','))
-                FROM pg_policy p WHERE p.polrelid = c.oid) AS policies
-        FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+      SELECT c.relname, c.relrowsecurity FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
        WHERE n.nspname = 'public' AND c.relkind = 'r'`);
-    expect(rows.length).toBe(41);
-    for (const r of rows) {
-      expect(r.relrowsecurity, r.relname).toBe(true);
-      expect(r.policies, r.relname).toEqual(["app_server_only:pitch_app"]);
+    expect(rows.length).toBe(51);
+    for (const r of rows) expect(r.relrowsecurity, r.relname).toBe(true);
+    const policies = await pool.query(`SELECT tablename, policyname, roles::text[] AS roles, qual, with_check FROM pg_policies WHERE schemaname = 'public'`);
+    for (const p of policies.rows) {
+      expect(p.roles.every((r: string) => r === "pitch_app" || r === "pitch_platform"), `${p.tablename}.${p.policyname}`).toBe(true);
+      // Unrestricted company-role access is allowed only on shared, non-customer reference tables.
+      if (p.roles.includes("pitch_app") && p.qual === "true") expect(["plans", "platform_catalog", "permissions"], p.tablename).toContain(p.tablename);
     }
+    expect(policies.rows.some((p) => p.policyname === "app_server_only")).toBe(false);
+  });
+
+  it("every company-owned table is isolated by app.company_id for the app role, and the platform role cannot read content", async () => {
+    const { rows } = await pool.query(`
+      SELECT c.table_name,
+             EXISTS (SELECT 1 FROM pg_policies p WHERE p.schemaname = 'public' AND p.tablename = c.table_name AND 'pitch_app' = ANY (p.roles)
+                      AND p.qual LIKE '%app_company_id()%') AS isolated
+        FROM information_schema.columns c JOIN pg_tables t ON t.tablename = c.table_name AND t.schemaname = 'public'
+       WHERE c.table_schema = 'public' AND c.column_name = 'company_id' AND c.table_name NOT IN ('subscription_events')`);
+    expect(rows.length).toBeGreaterThanOrEqual(42);
+    for (const r of rows) expect(r.isolated, r.table_name).toBe(true);
+    const content = ["pitches", "creators", "documents", "document_versions", "pitch_images", "ratings", "platform_responses", "workflow_events", "notifications"];
+    for (const t of content) {
+      const { rows: priv } = await pool.query(`SELECT has_table_privilege('pitch_platform', $1, 'SELECT') AS s`, [`public.${t}`]);
+      expect(priv[0].s, t).toBe(false);
+    }
+    const { rows: cols } = await pool.query(`SELECT has_column_privilege('pitch_app', 'public.users', 'password_hash', 'SELECT') AS pw,
+      has_column_privilege('pitch_app', 'public.users', 'mfa_secret_enc', 'SELECT') AS mfa`);
+    expect(cols[0]).toEqual({ pw: false, mfa: false });
   });
 
   it("anon, authenticated and service_role have no privilege on any table, sequence or function", async () => {

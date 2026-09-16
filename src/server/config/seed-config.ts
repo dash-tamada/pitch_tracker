@@ -1,15 +1,8 @@
 /**
- * Idempotent configuration seed — safe for every environment including production.
- * Contains NO people, creators or pitches. Admins can change all of it afterwards.
+ * Default configuration values used when provisioning a company (see modules/tenancy/provision.ts).
+ * Contains NO people, creators or pitches. Company admins can change all of it afterwards.
  */
-import { eq } from "drizzle-orm";
 import type { Db } from "@/server/db/client";
-import {
-  lookupValues, permissions, platforms, ratingCategories, rolePermissions, roles, systemSettings,
-  workflowDefinitions, workflowStages, workflowTransitions,
-} from "@/server/db/schema";
-import { DEFAULT_ROLE_MATRIX, PERMISSIONS, ROLE_KEYS } from "@/server/modules/authz/permissions";
-import { DEFAULT_STAGES, DEFAULT_TRANSITIONS, DEFAULT_WORKFLOW_NAME, INITIAL_STAGE } from "./default-workflow";
 
 type LookupSeed = Record<string, [key: string, label: string][]>;
 
@@ -53,50 +46,12 @@ export const DEFAULT_SETTINGS: Record<string, unknown> = {
   aging_thresholds_days: { attention: 3, overdue: 7, critical: 14 },
 };
 
-export async function seedConfig(db: Db): Promise<void> {
-  await db.transaction(async (tx) => {
-    await tx.insert(permissions).values(Object.entries(PERMISSIONS).map(([key, description]) => ({ key, description }))).onConflictDoNothing();
-
-    for (const key of ROLE_KEYS) {
-      const def = DEFAULT_ROLE_MATRIX[key];
-      await tx.insert(roles).values({ key, name: def.name, isSystem: true }).onConflictDoNothing();
-      const [role] = await tx.select({ id: roles.id }).from(roles).where(eq(roles.key, key));
-      // Only seed permissions for a role that has none yet — never overwrite an Admin's edits.
-      const existing = await tx.select({ k: rolePermissions.permissionKey }).from(rolePermissions).where(eq(rolePermissions.roleId, role!.id)).limit(1);
-      if (existing.length === 0) {
-        await tx.insert(rolePermissions).values(def.permissions.map((p) => ({ roleId: role!.id, permissionKey: p })));
-      }
-    }
-
-    for (const [type, values] of Object.entries(LOOKUPS)) {
-      await tx.insert(lookupValues).values(values.map(([key, label], i) => ({ type: type as never, key, label, sortOrder: i }))).onConflictDoNothing();
-    }
-    await tx.insert(ratingCategories).values(RATING_CATEGORIES.map(([key, label], i) => ({ key, label, sortOrder: i }))).onConflictDoNothing();
-
-    const existingPlatforms = await tx.select({ name: platforms.name }).from(platforms);
-    const have = new Set(existingPlatforms.map((p) => p.name.toLowerCase()));
-    const missing = SEED_PLATFORMS.filter((n) => !have.has(n.toLowerCase()));
-    if (missing.length) await tx.insert(platforms).values(missing.map((name) => ({ name, kind: name === "YouTube" ? "AVOD" : "OTT" })));
-
-    await tx.insert(systemSettings).values(Object.entries(DEFAULT_SETTINGS).map(([key, value]) => ({ key, value }))).onConflictDoNothing();
-
-    const [active] = await tx.select({ id: workflowDefinitions.id }).from(workflowDefinitions).where(eq(workflowDefinitions.isActive, true));
-    if (!active) {
-      const [def] = await tx.insert(workflowDefinitions).values({ name: DEFAULT_WORKFLOW_NAME, version: 1, isActive: true, initialStageKey: INITIAL_STAGE })
-        .returning({ id: workflowDefinitions.id });
-      await tx.insert(workflowStages).values(DEFAULT_STAGES.map((s, i) => ({
-        definitionId: def!.id, key: s.key, name: s.name, category: s.category, badge: s.badge,
-        isTerminal: s.isTerminal ?? false, requiresOwner: s.requiresOwner ?? true, sortOrder: i,
-      })));
-      await tx.insert(workflowTransitions).values(DEFAULT_TRANSITIONS.map((t) => ({
-        definitionId: def!.id, fromStageKey: t.from, toStageKey: t.to, action: t.action, requiredPermission: t.permission,
-        allowedRoleKeys: t.roles ?? null, requiresCurrentOwner: t.requiresCurrentOwner ?? true,
-        requiresRemarks: t.requiresRemarks ?? false, requiresRejectionReason: t.requiresRejectionReason ?? false,
-        requiresRecipient: t.requiresRecipient ?? false, recipientRoleKeys: t.recipientRoles ?? null,
-        requiresChangeTypes: t.requiresChangeTypes ?? false, requiresPlatform: t.requiresPlatform ?? false,
-        isApproval: t.isApproval ?? false,
-      })));
-    }
-  });
+/**
+ * Single-company convenience for scripts and tests: platform catalogue + one company's defaults.
+ * `platformDb` is the identity connection, `companyDb` a company-scoped handle.
+ */
+export async function seedConfig(platformDb: Db, companyDb: Db): Promise<void> {
+  const { seedPlatform, ensureCompanyDefaults } = await import("@/server/modules/tenancy/provision");
+  await seedPlatform(platformDb);
+  await ensureCompanyDefaults(companyDb);
 }
-

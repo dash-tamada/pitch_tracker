@@ -42,7 +42,7 @@ describe("script versioning", () => {
     expect(docs[0]!.versions.map((v) => [v.versionNo, v.isCurrent, v.scanStatus])).toEqual([[2, true, "NOT_SCANNED"], [1, false, "NOT_SCANNED"]]);
     // storage keys are server-generated; the user's filename is display-only
     const [row] = await db.select().from(documentVersions).where(eq(documentVersions.versionNo, 1));
-    expect(row!.storageKey).toMatch(/^pitches\/[0-9a-f-]{36}\/documents\/[0-9a-f-]{36}\.pdf$/);
+    expect(row!.storageKey).toMatch(/^company\/aaaaaaaa-0000-4000-8000-00000000000a\/pitches\/[0-9a-f-]{36}\/documents\/[0-9a-f-]{36}\.pdf$/);
     expect(row!.sha256).toMatch(/^[0-9a-f]{64}$/);
     // the database refuses edits to a version row
     await expect(db.update(documentVersions).set({ storageKey: "evil" }).where(eq(documentVersions.id, row!.id))).rejects.toThrow();

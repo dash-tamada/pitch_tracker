@@ -6,7 +6,7 @@ import { Empty, fmtDate, PageHeader } from "@/components/ui";
 
 export default async function DevelopmentPage() {
   const { actor } = await requirePageSession();
-  const data = await pageData(() => developmentPipeline(getDb(), actor));
+  const data = await pageData(() => developmentPipeline(getDb(actor), actor));
   if (!data) return <p className="notice">You do not have access to the development tracker.</p>;
   return (
     <>

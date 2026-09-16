@@ -10,7 +10,7 @@ import { Empty, fmtDate, PageHeader, StageBadge, Stat } from "@/components/ui";
 
 export default async function DashboardPage() {
   const { actor } = await requirePageSession();
-  const db = getDb();
+  const db = getDb(actor);
   const management = can(actor, "pitch.view_all") || can(actor, "analytics.view");
   const [s, f, me, lookups] = await Promise.all([dashboardSummary(db, actor), funnel(db, actor), myWork(db, actor), getLookups(db)]);
   const [b, t, aging] = management ? await Promise.all([breakdowns(db, actor), timeMetrics(db, actor), agingPitches(db, actor)]) : [null, null, null];

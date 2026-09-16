@@ -31,6 +31,8 @@ export function LoginForm({ initialStep }: { initialStep: "password" | "mfa" }) 
     try {
       if (step === "password") {
         const r = await post("/api/v1/auth/login", { email: form.get("email"), password: form.get("password") });
+        // A temp password set by the platform must be replaced before MFA set-up or anything else.
+        if (r.mustChangePassword) { window.location.assign("/change-password"); return; }
         if (r.mfaEnrolmentRequired) { window.location.assign("/mfa-setup"); return; }
         if (r.mfaRequired) { setStep("mfa"); return; }
       } else {

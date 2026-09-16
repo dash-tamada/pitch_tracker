@@ -9,7 +9,7 @@ import { Empty, PageHeader } from "@/components/ui";
 
 export default async function PlatformsPage() {
   const { actor } = await requirePageSession();
-  const db = getDb();
+  const db = getDb(actor);
   const rows = await pageData(() => listPlatforms(db, actor, true));
   if (!rows) return <p className="notice">You do not have access to platforms.</p>;
   const lookups = await getLookups(db);

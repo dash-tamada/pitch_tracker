@@ -2,7 +2,7 @@
  * Workflow engine — the ONLY code path that changes a pitch's stage or owner.
  * Every action: authorize → validate → one transaction (event + projection + participants + rating + audit + notifications).
  */
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { Db, DbOrTx } from "@/server/db/client";
 import {
   jobOutbox, lookupValues, notifications, pitchParticipants, pitches, platforms, ratingCategories,
@@ -222,6 +222,41 @@ async function assertLookup(db: DbOrTx, type: "REJECTION_CATEGORY" | "CHANGE_REQ
   const found = await db.select({ key: lookupValues.key }).from(lookupValues)
     .where(and(eq(lookupValues.type, type), inArray(lookupValues.key, unique), eq(lookupValues.active, true)));
   if (found.length !== unique.length) throw new AppError("VALIDATION", "Unknown option selected.", { [field]: "Invalid" });
+}
+
+/**
+ * Moves every open pitch owned by `fromUserId` to `toUserId` (used when an employee is disabled).
+ * Each move is a normal ASSIGN event, so the journey, projection check and audit trail stay intact.
+ * Caller must hold user.manage and pass an open transaction; the recipient must be active and able to see each pitch.
+ */
+export async function reassignOwnedPitches(tx: DbOrTx, actor: Actor, fromUserId: string, toUserId: string, ctx: RequestContext = {}) {
+  if (!can(actor, "user.manage")) throw new AppError("FORBIDDEN", "You do not have permission to do this.");
+  if (fromUserId === toUserId) throw new AppError("VALIDATION", "Choose a different person.", { reassignToUserId: "Invalid" });
+  const u = (await loadUsersWithPermissions(tx, [toUserId])).get(toUserId);
+  if (!u || u.status !== "ACTIVE") throw new AppError("INVALID_RECIPIENT", "The selected person is not an active user.");
+  const owned = await tx.select({ id: pitches.id, title: pitches.title, stage: pitches.currentStageKey, version: pitches.version,
+    lastEventSeq: pitches.lastEventSeq, confidentiality: pitches.confidentiality })
+    .from(pitches).where(and(eq(pitches.currentOwnerId, fromUserId), isNull(pitches.archivedAt))).for("update");
+  for (const p of owned) {
+    const reasons = await participantReasons(tx, p.id, toUserId);
+    const recipientActor: Actor = { userId: u.id, companyId: actor.companyId, scope: "COMPANY", roles: u.roles, permissions: u.permissions,
+      clearance: u.clearance, mfaSatisfied: true };
+    if (!canViewPitch(recipientActor, { confidentiality: p.confidentiality, currentOwnerId: toUserId, archivedAt: null, participantReasons: [...reasons, "ASSIGNED"] })) {
+      throw new AppError("INVALID_RECIPIENT", `The selected person is not cleared to take over "${p.title}".`);
+    }
+    const seq = p.lastEventSeq + 1;
+    const [event] = await tx.insert(workflowEvents).values({ pitchId: p.id, seq, action: "ASSIGN", fromStageKey: p.stage, toStageKey: p.stage,
+      actorId: actor.userId, fromOwnerId: fromUserId, toOwnerId: toUserId, remarks: "Reassigned because the previous owner's account was disabled.",
+      metadata: { reassignment: true } }).returning({ id: workflowEvents.id });
+    await tx.update(pitches).set({ currentOwnerId: toUserId, lastEventSeq: seq, version: sql`${pitches.version} + 1` }).where(eq(pitches.id, p.id));
+    await tx.insert(pitchParticipants).values({ pitchId: p.id, userId: toUserId, reason: "ASSIGNED", grantedById: actor.userId }).onConflictDoNothing();
+    const [n] = await tx.insert(notifications).values({ userId: toUserId, type: "workflow.assign", pitchId: p.id,
+      title: `"${p.title}" has been reassigned to you.` }).returning({ id: notifications.id });
+    await tx.insert(jobOutbox).values({ type: "EMAIL_NOTIFICATION", payload: { notificationId: n!.id } });
+    await writeAudit(tx, { actorId: actor.userId, action: "workflow.reassigned", resourceType: "pitch", resourceId: p.id,
+      before: { ownerId: fromUserId }, after: { ownerId: toUserId, eventId: event!.id, seq } }, ctx);
+  }
+  return { reassigned: owned.length };
 }
 
 /** Timeline for a pitch the actor can see. */

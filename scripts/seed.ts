@@ -1,9 +1,15 @@
-/** Seeds configuration only (roles, permissions, workflow, lookups, platforms). Safe in every environment. */
+/**
+ * Seeds the platform catalogue (permissions, plans, platform list). Safe in every environment; no people, no content.
+ * Companies get their own defaults when the Super Admin creates them.
+ * Usage: PLATFORM_DATABASE_URL=... npx tsx scripts/seed.ts
+ */
+import { config } from "dotenv";
 import { createDb } from "../src/server/db/client";
-import { seedConfig } from "../src/server/config/seed-config";
+import { seedPlatform } from "../src/server/modules/tenancy/provision";
 
-const url = process.env.DATABASE_URL;
-if (!url) throw new Error("DATABASE_URL is not set");
+config({ path: ".env.local", quiet: true });
+const url = process.env.PLATFORM_DATABASE_URL;
+if (!url) throw new Error("PLATFORM_DATABASE_URL is not set");
 const { db, pool } = createDb(url, 1);
-seedConfig(db).then(() => { console.log("Configuration seeded."); return pool.end(); })
+seedPlatform(db).then(() => { console.log("Platform catalogue seeded."); return pool.end(); })
   .catch((e: unknown) => { console.error("Seed failed:", e instanceof Error ? (e.cause as { message?: string } | undefined)?.message ?? e.name : "unknown"); process.exit(1); });

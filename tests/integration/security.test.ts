@@ -7,9 +7,10 @@ import { canViewPitch, pitchVisibilityCondition } from "@/server/modules/authz/p
 import { findCreatorMatches, createCreator } from "@/server/modules/creators/service";
 import { createPitch } from "@/server/modules/pitches/service";
 import { getAvailableActions, getTimeline, performAction } from "@/server/modules/workflow/engine";
-import { closeDb, makePitch, makeTeam, makeUser, testDb } from "../helpers/db";
+import { closeDb, makePitch, makeTeam, makeUser, platformTestDb, testDb } from "../helpers/db";
 
 const db = testDb();
+const pdb = platformTestDb();
 let team: Awaited<ReturnType<typeof makeTeam>>;
 let pitchId = "";
 
@@ -156,40 +157,40 @@ describe("authentication", () => {
   const password = "Monsoon-Rains-2026!";
   it("login works, stores only a hashed token, and logout revokes", async () => {
     const u = await makeUser(db, "Login User", ["EMPLOYEE"], { password });
-    const res = await login(db, { email: u.email.toUpperCase(), password }, { ip: "10.0.0.1" });
+    const res = await login(pdb, { email: u.email.toUpperCase(), password }, { ip: "10.0.0.1" });
     const [s] = await db.select().from(sessions).where(eq(sessions.userId, u.id));
     expect(s!.tokenHash.toString("base64url")).not.toBe(res.token);
-    expect((await resolveSession(db, res.token))?.actor.userId).toBe(u.id);
-    await logout(db, res.token);
-    expect(await resolveSession(db, res.token)).toBeNull();
+    expect((await resolveSession(pdb, res.token))?.actor.userId).toBe(u.id);
+    await logout(pdb, res.token);
+    expect(await resolveSession(pdb, res.token)).toBeNull();
   });
   it("wrong password and unknown email return the same error", async () => {
     const u = await makeUser(db, "Enum User", ["EMPLOYEE"], { password });
-    expect(await errCode(login(db, { email: u.email, password: "Wrong-Password-1!" }, { ip: "10.0.0.2" }))).toBe("INVALID_CREDENTIALS");
-    expect(await errCode(login(db, { email: "nobody@example.test", password: "Wrong-Password-1!" }, { ip: "10.0.0.2" }))).toBe("INVALID_CREDENTIALS");
+    expect(await errCode(login(pdb, { email: u.email, password: "Wrong-Password-1!" }, { ip: "10.0.0.2" }))).toBe("INVALID_CREDENTIALS");
+    expect(await errCode(login(pdb, { email: "nobody@example.test", password: "Wrong-Password-1!" }, { ip: "10.0.0.2" }))).toBe("INVALID_CREDENTIALS");
   });
   it(`locks the account after ${LOCKOUT_THRESHOLD} failures, even with the right password`, async () => {
     const u = await makeUser(db, "Lock User", ["EMPLOYEE"], { password });
-    for (let i = 0; i < LOCKOUT_THRESHOLD; i++) await errCode(login(db, { email: u.email, password: "Nope-Nope-123!" }, { ip: "10.0.0.3" }));
-    expect(await errCode(login(db, { email: u.email, password }, { ip: "10.0.0.3" }))).toBe("ACCOUNT_LOCKED");
+    for (let i = 0; i < LOCKOUT_THRESHOLD; i++) await errCode(login(pdb, { email: u.email, password: "Nope-Nope-123!" }, { ip: "10.0.0.3" }));
+    expect(await errCode(login(pdb, { email: u.email, password }, { ip: "10.0.0.3" }))).toBe("ACCOUNT_LOCKED");
   });
   it("rate-limits an IP spraying many accounts", async () => {
     let last = "";
-    for (let i = 0; i < 32; i++) last = await errCode(login(db, { email: `spray${i}@example.test`, password: "Spray-Spray-123!" }, { ip: "10.9.9.9" }));
+    for (let i = 0; i < 32; i++) last = await errCode(login(pdb, { email: `spray${i}@example.test`, password: "Spray-Spray-123!" }, { ip: "10.9.9.9" }));
     expect(last).toBe("RATE_LIMITED");
   });
   it("idle sessions expire; disabled users lose access immediately", async () => {
     const u = await makeUser(db, "Idle User", ["EMPLOYEE"], { password });
-    const res = await login(db, { email: u.email, password }, { ip: "10.0.0.4" });
-    expect(await resolveSession(db, res.token, new Date(Date.now() + SESSION_IDLE_MS + 1000))).toBeNull();
-    const res2 = await login(db, { email: u.email, password }, { ip: "10.0.0.4" });
+    const res = await login(pdb, { email: u.email, password }, { ip: "10.0.0.4" });
+    expect(await resolveSession(pdb, res.token, new Date(Date.now() + SESSION_IDLE_MS + 1000))).toBeNull();
+    const res2 = await login(pdb, { email: u.email, password }, { ip: "10.0.0.4" });
     await db.update(users).set({ status: "DISABLED" }).where(eq(users.id, u.id));
-    expect(await resolveSession(db, res2.token)).toBeNull();
+    expect(await resolveSession(pdb, res2.token)).toBeNull();
   });
   it("CEO login requires MFA before the session is trusted", async () => {
     const u = await makeUser(db, "Login CEO", ["CEO"], { password, clearance: "RESTRICTED" });
-    const res = await login(db, { email: u.email, password }, { ip: "10.0.0.5" });
+    const res = await login(pdb, { email: u.email, password }, { ip: "10.0.0.5" });
     expect(res.mfaRequired).toBe(true);
-    expect((await resolveSession(db, res.token))?.actor.mfaSatisfied).toBe(false);
+    expect((await resolveSession(pdb, res.token))?.actor.mfaSatisfied).toBe(false);
   });
 });

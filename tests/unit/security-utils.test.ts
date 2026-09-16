@@ -74,7 +74,7 @@ describe("session tokens", () => {
 
 describe("canViewPitch", () => {
   const mk = (role: keyof typeof DEFAULT_ROLE_MATRIX, clearance: Actor["clearance"] = "CONFIDENTIAL"): Actor =>
-    ({ userId: "u", roles: new Set([role]), permissions: new Set(DEFAULT_ROLE_MATRIX[role].permissions), clearance, mfaSatisfied: true });
+    ({ userId: "u", companyId: "c", scope: "COMPANY", roles: new Set([role]), permissions: new Set(DEFAULT_ROLE_MATRIX[role].permissions), clearance, mfaSatisfied: true });
   const facts = { confidentiality: "CONFIDENTIAL" as const, currentOwnerId: "other", archivedAt: null, participantReasons: [] as string[] };
   it("employee needs involvement", () => {
     expect(canViewPitch(mk("EMPLOYEE"), facts)).toBe(false);

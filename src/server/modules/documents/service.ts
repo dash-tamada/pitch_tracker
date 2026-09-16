@@ -17,6 +17,7 @@ import { can, requirePermission, type Actor } from "@/server/modules/authz/polic
 import { writeAudit, type RequestContext } from "@/server/modules/audit/service";
 import { loadVisiblePitch } from "@/server/modules/workflow/engine";
 import { DOCUMENT_TYPES, IMAGE_TYPES, detectAndValidate, extensionOf, sanitizeFilename } from "@/server/modules/storage/file-type";
+import { assertCanStore } from "@/server/modules/tenancy/limits";
 import { MAX_UPLOAD_BYTES, SIGNED_URL_TTL_SECONDS } from "@/server/modules/storage";
 import type { StoragePort } from "@/server/modules/storage/port";
 
@@ -35,6 +36,11 @@ export const uploadIntentSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("IMAGE"), pitchId: z.uuid(), categoryKey: z.string().max(60), caption: z.string().trim().max(300).optional(), ...common }).strict(),
   z.object({ kind: z.literal("CREATOR_PHOTO"), creatorId: z.uuid(), ...common }).strict(),
 ]);
+
+function companyPrefix(actor: Actor): string {
+  if (!actor.companyId) throw new AppError("FORBIDDEN", "You do not have permission to do this.");
+  return `company/${actor.companyId}`;
+}
 
 async function assertLookup(db: Db, type: "DOCUMENT_CATEGORY" | "IMAGE_CATEGORY", key: string) {
   const [hit] = await db.select({ key: lookupValues.key }).from(lookupValues)
@@ -71,7 +77,9 @@ export async function createUploadIntent(db: Db, storage: StoragePort, actor: Ac
     .where(and(eq(uploadIntents.createdById, actor.userId), gt(uploadIntents.createdAt, new Date(now.getTime() - 3_600_000))));
   if ((recent?.n ?? 0) >= MAX_INTENTS_PER_HOUR) throw new AppError("RATE_LIMITED", "Too many uploads in the last hour.");
 
-  const quarantineKey = `quarantine/${randomUUID()}.${ext}`;
+  if (input.kind === "DOCUMENT") await assertCanStore(db, input.sizeBytes);
+  // Every object key starts with the owning company, so storage housekeeping and exports stay per company.
+  const quarantineKey = `${companyPrefix(actor)}/quarantine/${randomUUID()}.${ext}`;
   const [intent] = await db.insert(uploadIntents).values({
     kind: input.kind,
     pitchId: input.kind === "CREATOR_PHOTO" ? null : input.pitchId,
@@ -117,7 +125,7 @@ export async function completeUpload(db: Db, storage: StoragePort, actor: Actor,
   const ext = verdict.type.ext;
 
   if (intent.kind === "CREATOR_PHOTO") {
-    const finalKey = `creators/${intent.creatorId}/photo-${randomUUID()}.${ext}`;
+    const finalKey = `${companyPrefix(actor)}/creators/${intent.creatorId}/photo-${randomUUID()}.${ext}`;
     await storage.move(intent.quarantineKey, finalKey);
     try {
       const old = await db.transaction(async (tx) => {
@@ -133,7 +141,8 @@ export async function completeUpload(db: Db, storage: StoragePort, actor: Actor,
   }
 
   if (intent.kind === "IMAGE") {
-    const finalKey = `pitches/${intent.pitchId}/images/${randomUUID()}.${ext}`;
+    await assertCanStore(db, bytes.length);
+    const finalKey = `${companyPrefix(actor)}/pitches/${intent.pitchId}/images/${randomUUID()}.${ext}`;
     await storage.move(intent.quarantineKey, finalKey);
     try {
       return await db.transaction(async (tx) => {
@@ -149,8 +158,9 @@ export async function completeUpload(db: Db, storage: StoragePort, actor: Actor,
   }
 
   // DOCUMENT → new document or new version; never overwrites.
+  await assertCanStore(db, bytes.length);
   const versionId = randomUUID();
-  const finalKey = `pitches/${intent.pitchId}/documents/${versionId}.${ext}`;
+  const finalKey = `${companyPrefix(actor)}/pitches/${intent.pitchId}/documents/${versionId}.${ext}`;
   await storage.move(intent.quarantineKey, finalKey);
   try {
     return await db.transaction(async (tx) => {

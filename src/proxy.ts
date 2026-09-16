@@ -6,13 +6,17 @@ export function proxy(request: NextRequest) {
   const isDev = process.env.NODE_ENV === "development";
   // Browser uploads go straight to private storage via one-time signed URLs; images render from short-lived signed URLs.
   const storageOrigin = (() => { try { return process.env.SUPABASE_URL ? new URL(process.env.SUPABASE_URL).origin : ""; } catch { return ""; } })();
+  // Google Drive uploads PUT the file bytes directly from the browser to Google's own resumable-upload URL
+  // (see GoogleDriveStorage.createSignedUploadUrl / upload-panel.tsx) — without this, the browser's own CSP
+  // blocks that fetch() before it ever leaves the page, surfacing to the user as a bare "Failed to fetch".
+  const driveConfigured = Boolean(process.env.GOOGLE_DRIVE_ROOT_FOLDER_ID && process.env.GOOGLE_SERVICE_ACCOUNT_KEY);
   const csp = [
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isDev ? " 'unsafe-eval'" : ""}`,
     `style-src 'self' 'nonce-${nonce}'`,
     `img-src 'self' blob: data:${storageOrigin ? ` ${storageOrigin}` : ""}`,
     "font-src 'self'",
-    `connect-src 'self'${storageOrigin ? ` ${storageOrigin}` : ""}`,
+    `connect-src 'self'${storageOrigin ? ` ${storageOrigin}` : ""}${driveConfigured ? " https://www.googleapis.com" : ""}`,
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",

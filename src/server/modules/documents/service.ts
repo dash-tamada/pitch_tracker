@@ -200,7 +200,8 @@ export async function listPitchDocuments(db: Db, actor: Actor, pitchId: string) 
   return docs.map((d) => ({ ...d, versions: versions.filter((v) => v.documentId === d.id).map((v) => ({ ...v, isCurrent: v.id === d.currentVersionId })) }));
 }
 
-export async function downloadVersion(db: Db, storage: StoragePort, actor: Actor, versionId: string, ctx: RequestContext = {}) {
+/** Shared by downloadVersion/viewVersion: same permission, visibility, archive and scan-status checks either way. */
+async function loadDownloadableVersion(db: Db, actor: Actor, versionId: string) {
   requirePermission(actor, "document.download");
   const [row] = await db.select({ v: documentVersions, pitchId: documents.pitchId, docArchived: documents.archivedAt })
     .from(documentVersions).innerJoin(documents, eq(documents.id, documentVersions.documentId)).where(eq(documentVersions.id, versionId));
@@ -210,13 +211,31 @@ export async function downloadVersion(db: Db, storage: StoragePort, actor: Actor
   if (row.v.scanStatus === "INFECTED" || row.v.scanStatus === "FAILED" || row.v.scanStatus === "PENDING") {
     throw new AppError("FORBIDDEN", "This file is blocked until it passes security checks.");
   }
+  return row;
+}
+
+async function logDocumentAccess(db: Db, actor: Actor, row: { v: typeof documentVersions.$inferSelect; pitchId: string },
+  action: "DOWNLOAD" | "VIEW", ctx: RequestContext) {
   await db.transaction(async (tx) => {
-    await tx.insert(documentAccessLogs).values({ documentVersionId: versionId, pitchId: row.pitchId, userId: actor.userId, action: "DOWNLOAD",
+    await tx.insert(documentAccessLogs).values({ documentVersionId: row.v.id, pitchId: row.pitchId, userId: actor.userId, action,
       ip: ctx.ip ?? null, userAgent: ctx.userAgent?.slice(0, 512) ?? null });
-    await writeAudit(tx, { actorId: actor.userId, action: "document.downloaded", resourceType: "pitch", resourceId: row.pitchId,
-      after: { documentId: row.v.documentId, versionId, versionNo: row.v.versionNo } }, ctx);
+    await writeAudit(tx, { actorId: actor.userId, action: action === "DOWNLOAD" ? "document.downloaded" : "document.viewed", resourceType: "pitch", resourceId: row.pitchId,
+      after: { documentId: row.v.documentId, versionId: row.v.id, versionNo: row.v.versionNo } }, ctx);
   });
+}
+
+/** 60-second signed URL forced as attachment (a download prompt), for "who downloaded this script?" logging. */
+export async function downloadVersion(db: Db, storage: StoragePort, actor: Actor, versionId: string, ctx: RequestContext = {}) {
+  const row = await loadDownloadableVersion(db, actor, versionId);
+  await logDocumentAccess(db, actor, row, "DOWNLOAD", ctx);
   return storage.createSignedReadUrl(row.v.storageKey, SIGNED_URL_TTL_SECONDS(), row.v.originalFilename);
+}
+
+/** Same checks and logging as downloadVersion, but the URL renders inline (a popup preview) instead of prompting to save. */
+export async function viewVersion(db: Db, storage: StoragePort, actor: Actor, versionId: string, ctx: RequestContext = {}) {
+  const row = await loadDownloadableVersion(db, actor, versionId);
+  await logDocumentAccess(db, actor, row, "VIEW", ctx);
+  return storage.createSignedReadUrl(row.v.storageKey, SIGNED_URL_TTL_SECONDS(), row.v.originalFilename, { inline: true, contentType: row.v.detectedMime });
 }
 
 /** "Who downloaded this script?" — management only. */

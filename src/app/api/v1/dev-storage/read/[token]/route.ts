@@ -8,7 +8,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ tok
   if (!(storage instanceof MemoryStorage)) return new NextResponse(null, { status: 404 });
   const r = storage.read((await params).token);
   if (!r) return new NextResponse(null, { status: 404 });
-  const headers: Record<string, string> = { "Content-Type": "application/octet-stream", "X-Content-Type-Options": "nosniff", "Cache-Control": "no-store" };
-  if (r.name !== undefined) headers["Content-Disposition"] = `attachment; filename*=UTF-8''${encodeURIComponent(r.name)}`;
+  const headers: Record<string, string> = { "Content-Type": r.contentType ?? "application/octet-stream", "X-Content-Type-Options": "nosniff", "Cache-Control": "no-store" };
+  if (r.name !== undefined) headers["Content-Disposition"] = `${r.inline ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(r.name)}`;
   return new NextResponse(new Uint8Array(r.bytes), { headers });
 }

@@ -14,6 +14,7 @@ import { getAvailableActions, getTimeline, TRACKER_ACTIONS } from "@/server/modu
 import { ActionForm, type FieldSpec } from "@/components/action-form";
 import { ACTION_LABEL, PLATFORM_STATUS_LABEL, typeLabel } from "@/components/labels";
 import { UploadPanel } from "@/components/upload-panel";
+import { ViewInPopupButton } from "@/components/view-in-popup-button";
 import { Empty, fmtDate, fmtDateTime, StageBadge, Stars, Tabs } from "@/components/ui";
 import { RatingCategoryForm } from "@/components/rating-form";
 
@@ -149,7 +150,8 @@ async function DocumentsTab({ actor, pitchId, lookups, archived, fresh }: { acto
                 <td>{v.originalFilename}<div className="muted">{(v.sizeBytes / 1024).toFixed(0)} KB · sha256 {v.sha256.slice(0, 12)}…</div></td>
                 <td>{fmtDateTime(v.createdAt)}</td><td>{v.uploadedByName}</td><td>{v.notes ?? ""}</td>
                 <td>{v.scanStatus === "CLEAN" ? "Scanned clean" : v.scanStatus === "NOT_SCANNED" ? "Not virus-scanned" : v.scanStatus}</td>
-                <td>
+                <td style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                  {can(actor, "document.download") && <ViewInPopupButton href={`/api/v1/document-versions/${v.id}/view`} />}
                   {can(actor, "document.download") && <a className="btn-secondary" href={`/api/v1/document-versions/${v.id}/download`} rel="noreferrer">Download</a>}
                   {canUpload && !v.isCurrent && <ActionForm endpoint={`/api/v1/documents/${doc.id}/current`} fields={[]} extra={{ versionId: v.id }} submitLabel="Make current" />}
                 </td>

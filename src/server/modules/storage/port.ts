@@ -6,8 +6,17 @@ export interface StoragePort {
   download(key: string, maxBytes: number): Promise<Buffer | null>;
   move(fromKey: string, toKey: string): Promise<void>;
   remove(keys: string[]): Promise<void>;
-  /** Short-lived read URL; `downloadName` forces Content-Disposition: attachment. */
-  createSignedReadUrl(key: string, ttlSeconds: number, downloadName?: string): Promise<string>;
+  /**
+   * Short-lived read URL. By default `downloadName` forces Content-Disposition: attachment (a download prompt).
+   * Pass `opts.inline: true` (with the file's real `contentType`) to instead let the browser render the file
+   * — a PDF or image opens directly instead of prompting to save.
+   */
+  createSignedReadUrl(key: string, ttlSeconds: number, downloadName?: string, opts?: { inline?: boolean; contentType?: string }): Promise<string>;
 }
 
-export class StorageError extends Error {}
+export class StorageError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "StorageError";
+  }
+}

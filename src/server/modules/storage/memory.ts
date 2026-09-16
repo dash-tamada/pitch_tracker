@@ -8,7 +8,7 @@ import type { StoragePort } from "./port";
 export class MemoryStorage implements StoragePort {
   readonly objects = new Map<string, Buffer>();
   readonly uploadTokens = new Map<string, { key: string; expires: number }>();
-  readonly readTokens = new Map<string, { key: string; expires: number; name?: string }>();
+  readonly readTokens = new Map<string, { key: string; expires: number; name?: string; inline?: boolean; contentType?: string }>();
 
   async createSignedUploadUrl(key: string) {
     const token = randomUUID();
@@ -36,15 +36,15 @@ export class MemoryStorage implements StoragePort {
     this.objects.set(to, b); this.objects.delete(from);
   }
   async remove(keys: string[]) { keys.forEach((k) => this.objects.delete(k)); }
-  async createSignedReadUrl(key: string, ttl: number, name?: string) {
+  async createSignedReadUrl(key: string, ttl: number, name?: string, opts?: { inline?: boolean; contentType?: string }) {
     const token = randomUUID();
-    this.readTokens.set(token, { key, expires: Date.now() + ttl * 1000, ...(name !== undefined ? { name } : {}) });
+    this.readTokens.set(token, { key, expires: Date.now() + ttl * 1000, ...(name !== undefined ? { name } : {}), ...opts });
     return `/api/v1/dev-storage/read/${token}`;
   }
-  read(token: string): { bytes: Buffer; name?: string } | null {
+  read(token: string): { bytes: Buffer; name?: string; inline?: boolean; contentType?: string } | null {
     const t = this.readTokens.get(token);
     if (!t || t.expires < Date.now()) return null;
     const bytes = this.objects.get(t.key);
-    return bytes ? { bytes, ...(t.name !== undefined ? { name: t.name } : {}) } : null;
+    return bytes ? { bytes, name: t.name, inline: t.inline, contentType: t.contentType } : null;
   }
 }

@@ -18,7 +18,10 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ tok
   } catch {
     return new NextResponse(null, { status: 404 });
   }
-  const headers: Record<string, string> = { "Content-Type": "application/octet-stream", "X-Content-Type-Options": "nosniff", "Cache-Control": "no-store" };
-  if (decoded.downloadName) headers["Content-Disposition"] = `attachment; filename*=UTF-8''${encodeURIComponent(decoded.downloadName)}`;
+  const headers: Record<string, string> = { "Content-Type": decoded.contentType ?? "application/octet-stream", "X-Content-Type-Options": "nosniff", "Cache-Control": "no-store" };
+  if (decoded.downloadName) {
+    const disposition = decoded.inline ? "inline" : "attachment";
+    headers["Content-Disposition"] = `${disposition}; filename*=UTF-8''${encodeURIComponent(decoded.downloadName)}`;
+  }
   return new NextResponse(new Uint8Array(bytes), { headers });
 }

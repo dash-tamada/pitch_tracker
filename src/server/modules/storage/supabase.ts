@@ -67,12 +67,14 @@ export class SupabaseStorage implements StoragePort {
     if (!res.ok) throw new StorageError(`remove failed (${res.status})`);
   }
 
-  async createSignedReadUrl(key: string, ttlSeconds: number, downloadName?: string) {
+  async createSignedReadUrl(key: string, ttlSeconds: number, downloadName?: string, opts?: { inline?: boolean; contentType?: string }) {
     const res = await this.call(`/object/sign/${this.bucket}/${encodeKey(key)}`, { method: "POST", headers: this.headers({ "content-type": "application/json" }), body: JSON.stringify({ expiresIn: ttlSeconds }) });
     if (!res.ok) throw new StorageError(`sign failed (${res.status})`);
     const data = (await res.json()) as { signedURL?: string };
     if (!data.signedURL?.startsWith("/object/sign/")) throw new StorageError("unexpected storage response");
-    const dl = downloadName !== undefined ? `&download=${encodeURIComponent(downloadName)}` : "";
+    // Supabase serves the object inline, using its stored content-type, unless `download` is present — so
+    // an inline (view) request simply omits that param instead of needing anything extra.
+    const dl = downloadName !== undefined && !opts?.inline ? `&download=${encodeURIComponent(downloadName)}` : "";
     return `${this.base}${data.signedURL}${dl}`;
   }
 }

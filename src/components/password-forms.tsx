@@ -36,8 +36,8 @@ export function SetPasswordForm({ endpoint = "/api/v1/auth/password/reset", head
     <form onSubmit={submit}>
       <h1>{heading}</h1>
       {error && <p className="error" role="alert">{error}</p>}
-      <p className="subtle">At least 12 characters. Mix upper and lower case, numbers or symbols — or use 16+ characters.</p>
-      <label className="field">New password<input name="password" type="password" autoComplete="new-password" required minLength={12} maxLength={128} /></label>
+      <p className="subtle">At least 6 characters. Mix upper and lower case, numbers or symbols — or use 16+ characters.</p>
+      <label className="field">New password<input name="password" type="password" autoComplete="new-password" required minLength={6} maxLength={128} /></label>
       <label className="field">Confirm password<input name="confirm" type="password" autoComplete="new-password" required /></label>
       <button className="btn">Set password</button>
     </form>

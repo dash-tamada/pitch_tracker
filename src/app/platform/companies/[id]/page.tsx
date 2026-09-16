@@ -32,7 +32,7 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
         fields={[
           { name: "fullName", label: "Full name", type: "text", required: true },
           { name: "email", label: "Email", type: "email", required: true },
-          { name: "tempPassword", label: "Temporary password", type: "password", required: true, hint: "At least 12 characters (or 16+ of any kind). Tell them this password privately — it is not shown again." },
+          { name: "tempPassword", label: "Temporary password", type: "password", required: true, hint: "At least 6 characters (or 16+ of any kind). Tell them this password privately — it is not shown again." },
         ]} />
 
       <ActionForm endpoint={`/api/v1/platform/companies/${c.id}/status`} title="Change status" submitLabel="Apply status" collapsed danger

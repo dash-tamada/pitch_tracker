@@ -4,7 +4,7 @@ import { hash, verify } from "@node-rs/argon2";
 const ARGON2ID = 2; // Algorithm.Argon2id (const enum cannot be imported under isolatedModules)
 const OPTIONS = { algorithm: ARGON2ID, memoryCost: 19456, timeCost: 2, parallelism: 1 } as const;
 
-export const PASSWORD_MIN = 12;
+export const PASSWORD_MIN = 6;
 export const PASSWORD_MAX = 128; // bounds hashing cost (DoS)
 
 const COMMON = new Set([

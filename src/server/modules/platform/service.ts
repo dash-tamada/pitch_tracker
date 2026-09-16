@@ -223,7 +223,10 @@ export async function createCompanyAdminWithPassword(db: Db, actor: Actor, compa
         const [u] = await tx.insert(users).values({ email, fullName: input.fullName, status: "ACTIVE", clearance: "RESTRICTED" }).returning({ id: users.id });
         const [role] = await tx.select({ id: roles.id }).from(roles).where(eq(roles.key, "COMPANY_ADMIN"));
         if (!role) throw new AppError("INTERNAL", "This company has no Company Admin role yet.");
-        await tx.insert(userRoles).values({ userId: u!.id, roleId: role.id, grantedById: actor.userId });
+        // grantedById is left unset: it has a composite FK to (company_id, id) on users, and the platform actor
+        // creating this belongs to no company at all — the same reason provisionAndInvite (first-admin creation
+        // at company sign-up) also omits it. Setting it to the Super Admin's own id violates that FK every time.
+        await tx.insert(userRoles).values({ userId: u!.id, roleId: role.id });
         return u!.id;
       });
     } catch (e) {

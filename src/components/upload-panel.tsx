@@ -40,11 +40,20 @@ export function UploadPanel({ kind, pitchId, creatorId, documentId, categories, 
       const intent = await api<{ intentId: string; uploadUrl: string }>("POST", "/api/v1/uploads", body);
 
       setStatus("Uploading…");
-      const form = new FormData();
-      form.append("cacheControl", "3600");
-      form.append("", file);
       const sameOrigin = intent.uploadUrl.startsWith("/");
-      const put = await fetch(intent.uploadUrl, { method: "PUT", body: form, credentials: sameOrigin ? "same-origin" : "omit", headers: sameOrigin ? csrfHeader() : { "x-upsert": "false" } });
+      const isDrive = intent.uploadUrl.startsWith("https://www.googleapis.com/");
+      // Google Drive's resumable session URL wants the raw bytes as the request body (no auth header — the
+      // session id in the URL is itself the one-time credential); Supabase Storage and the local dev-storage
+      // stand-in both expect the file wrapped in multipart form data instead.
+      let put: Response;
+      if (isDrive) {
+        put = await fetch(intent.uploadUrl, { method: "PUT", body: file, credentials: "omit", headers: { "content-type": file.type || "application/octet-stream" } });
+      } else {
+        const form = new FormData();
+        form.append("cacheControl", "3600");
+        form.append("", file);
+        put = await fetch(intent.uploadUrl, { method: "PUT", body: form, credentials: sameOrigin ? "same-origin" : "omit", headers: sameOrigin ? csrfHeader() : { "x-upsert": "false" } });
+      }
       if (!put.ok) throw new Error("Upload failed. Please try again.");
 
       setStatus("Checking the file…");

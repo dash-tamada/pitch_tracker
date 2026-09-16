@@ -1,4 +1,5 @@
 import type { StoragePort } from "./port";
+import { GoogleDriveStorage } from "./drive";
 import { MemoryStorage } from "./memory";
 import { SupabaseStorage } from "./supabase";
 
@@ -6,15 +7,21 @@ let instance: StoragePort | undefined;
 
 export function getStorage(): StoragePort {
   if (instance) return instance;
+  // Google Drive takes priority when configured (the point of adding it was to stop using Supabase Storage),
+  // so an incomplete Supabase config left over from before does not silently win.
+  const driveRoot = process.env.GOOGLE_DRIVE_ROOT_FOLDER_ID;
+  const driveKey = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SECRET_KEY;
   const bucket = process.env.STORAGE_BUCKET ?? "pitch-files";
-  if (url && key) {
+  if (driveRoot && driveKey) {
+    instance = new GoogleDriveStorage(driveRoot);
+  } else if (url && key) {
     instance = new SupabaseStorage(url, key, bucket);
   } else if (memoryStorageAllowed()) {
     instance = new MemoryStorage();
   } else {
-    throw new Error("Storage is not configured (SUPABASE_URL / SUPABASE_SECRET_KEY)");
+    throw new Error("Storage is not configured (GOOGLE_DRIVE_ROOT_FOLDER_ID / GOOGLE_SERVICE_ACCOUNT_KEY, or SUPABASE_URL / SUPABASE_SECRET_KEY)");
   }
   return instance;
 }

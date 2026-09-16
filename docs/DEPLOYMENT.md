@@ -55,6 +55,55 @@ The app verifies the server certificate and refuses to start in production witho
 
 **Project Settings → API Keys → Secret keys → create** a key named `pitch-tracker-vercel`. It bypasses RLS: server-side only, never `NEXT_PUBLIC_`, never in the browser.
 
+### 3b. Storage: Google Drive instead of Supabase (optional)
+
+Pitch decks, scripts and every other document/image can be stored in Google Drive instead of Supabase Storage —
+set the two variables below and the app uses Drive automatically (it takes priority over Supabase when both are
+set; see `src/server/modules/storage/index.ts`). Everything else about uploads/downloads works the same from
+the user's point of view.
+
+`Likely (not verified):` this integration has not been tested against a real Google account in this session — no
+Drive credentials were available to test with. Try it in a non-production environment first and watch for errors
+on upload.
+
+**One thing to check before anything else — storage quota.** A Google Cloud service account (the only practical
+way to talk to Drive with no human "log in" step) has **zero storage of its own**. Uploaded files are only
+usable long-term in one of these two setups:
+
+1. **Google Workspace, with a Shared Drive.** Create a Shared Drive (not a personal "My Drive" folder) under
+   your Workspace admin account, share it with the service account's email (see step 2) as **Content Manager**
+   or **Manager**, and use the Shared Drive's own id as `GOOGLE_DRIVE_ROOT_FOLDER_ID`. Storage is pooled from the
+   Workspace subscription, not any one account's personal quota — this is the setup this integration is written
+   for.
+2. **A personal/consumer Google account (no Workspace).** Shared Drives are not available. A regular folder
+   shared with the service account will still hit the service account's own 0-byte quota on upload. `Unknown:`
+   whether `tamadamedia.com` has Google Workspace — if it does not, this integration cannot be used as-is without
+   either buying Workspace or switching to a different auth model (a real human account's OAuth refresh token,
+   which is a bigger change than what's built here). Confirm this before relying on it.
+
+**Setup, once you know which of the above applies:**
+
+1. **Google Cloud Console** → create (or reuse) a project → **APIs & Services → Library** → enable the **Google
+   Drive API**.
+2. **APIs & Services → Credentials → Create credentials → Service account.** No roles needed at the project
+   level (Drive access is granted by sharing the folder, in the next step, not by IAM). Open the created service
+   account → **Keys → Add key → Create new key → JSON** → download it. This file is a credential: treat it like a
+   password, never commit it.
+3. Note the service account's email (looks like `pitch-tracker@<project>.iam.gserviceaccount.com`). In Google
+   Drive, share the Shared Drive (or folder) with that email, **Content Manager** access, then copy its id from
+   the Drive URL (`https://drive.google.com/drive/folders/<this-part>`).
+4. Set in Vercel (Production, and separately for any Preview/staging environment that uses Drive):
+
+| Variable | Value |
+|---|---|
+| `GOOGLE_SERVICE_ACCOUNT_KEY` | the downloaded JSON key file, base64-encoded onto one line: `base64 -w0 service-account.json` (macOS: `base64 -i service-account.json`) |
+| `GOOGLE_DRIVE_ROOT_FOLDER_ID` | the Shared Drive or folder id from step 3 |
+
+Locally, the same two variables go in `.env.local` (never `.env.example`, which is not tracked in this repo).
+
+To go back to Supabase Storage later, remove `GOOGLE_DRIVE_ROOT_FOLDER_ID` (or `GOOGLE_SERVICE_ACCOUNT_KEY`) —
+existing files already moved to Drive do not move themselves back automatically.
+
 ## 4. Vercel project
 
 Import the GitHub repository → Framework: Next.js. **Settings → Environment Variables**, scope **Production** only (create separate values later for Preview/staging — never share production credentials with previews):

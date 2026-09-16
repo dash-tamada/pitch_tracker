@@ -205,6 +205,11 @@ export async function createCompanyAdminWithPassword(db: Db, actor: Actor, compa
   if (errors.length) throw new AppError("VALIDATION", errors.join(" "), { tempPassword: errors[0]! });
   const [company] = await db.select({ id: companies.id }).from(companies).where(eq(companies.id, companyId));
   if (!company) throw notFound("Company");
+  // Checked on the identity connection, which (unlike the company-scoped one) can see every account regardless of
+  // scope or company — a company connection's view of `users` is limited by RLS to its own company, so it would
+  // miss a clash with, say, a platform (Super Admin) account or an employee of a different company.
+  const [existingAnywhere] = await db.select({ id: users.id }).from(users).where(eq(users.email, email));
+  if (existingAnywhere) throw new AppError("CONFLICT", "This email address cannot be used. It may already be registered.", { email: "Unavailable" });
 
   const passwordHash = await hashPassword(input.tempPassword);
   const tenant = tenantDb(companyId);
@@ -215,8 +220,6 @@ export async function createCompanyAdminWithPassword(db: Db, actor: Actor, compa
         await assertCanAddUser(tx);
         // The platform is vouching for this address directly; it does not need to match the company's domain policy.
         await tx.insert(companyAllowedEmails).values({ companyId, email, reason: "Company Admin added directly by platform", approvedById: actor.userId }).onConflictDoNothing();
-        const [exists] = await tx.select({ id: users.id }).from(users).where(eq(users.email, email));
-        if (exists) throw new AppError("CONFLICT", "A user with this email already exists.", { email: "Unavailable" });
         const [u] = await tx.insert(users).values({ email, fullName: input.fullName, status: "ACTIVE", clearance: "RESTRICTED" }).returning({ id: users.id });
         const [role] = await tx.select({ id: roles.id }).from(roles).where(eq(roles.key, "COMPANY_ADMIN"));
         if (!role) throw new AppError("INTERNAL", "This company has no Company Admin role yet.");

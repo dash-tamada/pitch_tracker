@@ -97,5 +97,9 @@ export const DEFAULT_ROLE_MATRIX: Record<RoleKey, { name: string; permissions: P
   VIEWER: { name: "Viewer", permissions: ["pitch.view", "creator.view", "platform.view", "analytics.view", "report.view"] },
 };
 
-/** Roles that must use MFA before any protected action. */
-export const MFA_REQUIRED_ROLES: ReadonlySet<RoleKey> = new Set(["COMPANY_ADMIN", "ADMIN", "CEO", "COO"]);
+/**
+ * Company-side roles that must use MFA before any protected action. Left empty on request: no company role is
+ * forced into MFA any more (a person can still turn it on for their own account — see users.mfaEnabled). Platform
+ * (Super Admin) accounts are unaffected by this set — they always require MFA regardless (see auth/service.ts).
+ */
+export const MFA_REQUIRED_ROLES: ReadonlySet<RoleKey> = new Set([]);

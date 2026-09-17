@@ -1,11 +1,16 @@
 /**
  * Applies SQL migrations using the MIGRATION role (never the runtime app role).
- * Usage: MIGRATION_DATABASE_URL=... npx tsx scripts/migrate.ts
+ * Usage: npm run db:migrate (reads MIGRATION_DATABASE_URL from .env.local, like seed.ts/seed-demo.ts do —
+ * previously this was the one db script that didn't, which meant it silently used whatever was already in
+ * the shell environment instead of .env.local).
  */
+import { config } from "dotenv";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import pg from "pg";
 import { connectionConfig } from "../src/server/db/ssl";
+
+config({ path: ".env.local", quiet: true });
 
 async function main(): Promise<void> {
   const url = process.env.MIGRATION_DATABASE_URL;

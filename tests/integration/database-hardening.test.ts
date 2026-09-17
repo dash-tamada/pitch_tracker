@@ -9,13 +9,18 @@ describe("database hardening (Supabase Data API exposure)", () => {
     const { rows } = await pool.query(`
       SELECT c.relname, c.relrowsecurity FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
        WHERE n.nspname = 'public' AND c.relkind = 'r'`);
-    expect(rows.length).toBe(51);
+    expect(rows.length).toBe(52);
     for (const r of rows) expect(r.relrowsecurity, r.relname).toBe(true);
     const policies = await pool.query(`SELECT tablename, policyname, roles::text[] AS roles, qual, with_check FROM pg_policies WHERE schemaname = 'public'`);
     for (const p of policies.rows) {
-      expect(p.roles.every((r: string) => r === "pitch_app" || r === "pitch_platform"), `${p.tablename}.${p.policyname}`).toBe(true);
+      // pitch_creator is the creator-portal role: structurally separate from staff (pitch_app/pitch_platform),
+      // scoped to its own rows via app_creator_id()/app_company_id() — see drizzle/0007_creator_portal.sql.
+      expect(p.roles.every((r: string) => r === "pitch_app" || r === "pitch_platform" || r === "pitch_creator"), `${p.tablename}.${p.policyname}`).toBe(true);
       // Unrestricted company-role access is allowed only on shared, non-customer reference tables.
       if (p.roles.includes("pitch_app") && p.qual === "true") expect(["plans", "platform_catalog", "permissions"], p.tablename).toContain(p.tablename);
+      // pitch_creator never gets unrestricted (qual = 'true') row access — every creator-portal policy is
+      // scoped to the caller's own company and/or own creator id.
+      if (p.roles.includes("pitch_creator")) expect(p.qual, `${p.tablename}.${p.policyname}`).not.toBe("true");
     }
     expect(policies.rows.some((p) => p.policyname === "app_server_only")).toBe(false);
   });
@@ -24,11 +29,14 @@ describe("database hardening (Supabase Data API exposure)", () => {
     const { rows } = await pool.query(`
       SELECT c.table_name,
              EXISTS (SELECT 1 FROM pg_policies p WHERE p.schemaname = 'public' AND p.tablename = c.table_name AND 'pitch_app' = ANY (p.roles)
-                      AND p.qual LIKE '%app_company_id()%') AS isolated
+                      AND p.qual LIKE '%app_company_id()%') AS isolated,
+             has_table_privilege('pitch_app', 'public.' || c.table_name, 'SELECT') AS app_can_select
         FROM information_schema.columns c JOIN pg_tables t ON t.tablename = c.table_name AND t.schemaname = 'public'
        WHERE c.table_schema = 'public' AND c.column_name = 'company_id' AND c.table_name NOT IN ('subscription_events')`);
     expect(rows.length).toBeGreaterThanOrEqual(42);
-    for (const r of rows) expect(r.isolated, r.table_name).toBe(true);
+    // A table is safe either because pitch_app's access to it is company-scoped by RLS, or because pitch_app
+    // has no privilege on it at all (e.g. creator_sessions, which only the pitch_creator role may touch).
+    for (const r of rows) expect(r.isolated || !r.app_can_select, r.table_name).toBe(true);
     const content = ["pitches", "creators", "documents", "document_versions", "pitch_images", "ratings", "platform_responses", "workflow_events", "notifications"];
     for (const t of content) {
       const { rows: priv } = await pool.query(`SELECT has_table_privilege('pitch_platform', $1, 'SELECT') AS s`, [`public.${t}`]);

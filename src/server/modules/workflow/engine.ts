@@ -191,8 +191,12 @@ export async function performAction(db: DbOrTx, actor: Actor, pitchId: string, r
         await tx.insert(jobOutbox).values({ type: "EMAIL_NOTIFICATION", payload: { notificationId: n!.id } });
       }
 
-      // Submitter hears about executive decisions and rejections of the story they brought in.
-      if (["SEND_TO_PLATFORM", "APPROVE", "REJECT", "GREENLIGHT"].includes(input.action) && pitch.createdById !== actor.userId && !metadata.partialApproval) {
+      // Submitter hears about executive decisions and rejections of the story they brought in. A portal-submitted
+      // pitch has no staff submitter (createdById is null) — there is no in-app notification target for a
+      // creator-portal account yet (see docs/CREATOR_PORTAL.md, "known gap"), so this is skipped rather than
+      // crashing on a null userId.
+      if (["SEND_TO_PLATFORM", "APPROVE", "REJECT", "GREENLIGHT"].includes(input.action) && pitch.createdById !== null
+        && pitch.createdById !== actor.userId && !metadata.partialApproval) {
         const verb = input.action === "REJECT" ? "was rejected" : input.action === "GREENLIGHT" ? "was greenlit" : `was approved by ${approvalType ?? "management"}`;
         const [n] = await tx.insert(notifications).values({ userId: pitch.createdById, type: `workflow.${input.action.toLowerCase()}`,
           title: `"${pitch.title}" ${verb}.`, pitchId: pitch.id }).returning({ id: notifications.id });

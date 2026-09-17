@@ -238,7 +238,7 @@ async function Timeline({ actor, events, lookups, stageName }: { actor: Actor; e
           <div className="when">{fmtDateTime(e.createdAt)}</div>
           <div className="what">{ACTION_LABEL[e.action] ?? e.action}{(e.metadata as { partialApproval?: boolean })?.partialApproval ? " (awaiting second executive)" : ""}
             {e.action === "MARK_READY_FOR_DEVELOPMENT" ? " 👍" : ""}</div>
-          <div>{names.get(e.actorId) ?? "—"}{e.approvalType ? ` (${e.approvalType})` : ""}
+          <div>{e.actorId ? (names.get(e.actorId) ?? "—") : "Creator (self-submitted)"}{e.approvalType ? ` (${e.approvalType})` : ""}
             {e.toOwnerId && e.fromOwnerId && e.toOwnerId !== e.fromOwnerId ? ` → ${names.get(e.toOwnerId) ?? ""}` : ""}
             {e.fromStageKey && e.fromStageKey !== e.toStageKey ? ` · ${stageName(e.fromStageKey)} → ${stageName(e.toStageKey)}` : ""}
             {e.platformId ? ` · ${platforms.find((p) => p.id === e.platformId)?.name ?? ""}` : ""}</div>
@@ -261,7 +261,7 @@ async function RemarksTab({ actor, pitchId, lookups }: { actor: Actor; pitchId: 
     <div className="table-wrap"><table className="data">
       <thead><tr><th>When</th><th>Who</th><th>Decision</th><th>What they said</th></tr></thead>
       <tbody>{events.map((e) => (
-        <tr key={e.id}><td>{fmtDateTime(e.createdAt)}</td><td>{names.get(e.actorId)}</td><td>{ACTION_LABEL[e.action] ?? e.action}</td>
+        <tr key={e.id}><td>{fmtDateTime(e.createdAt)}</td><td>{e.actorId ? names.get(e.actorId) : "Creator (self-submitted)"}</td><td>{ACTION_LABEL[e.action] ?? e.action}</td>
           <td>{e.rejectionReason && <p><strong>{labelOf(lookups, "REJECTION_CATEGORY", e.rejectionCategoryKey)}:</strong> {e.rejectionReason}</p>}{e.remarks && <p>{e.remarks}</p>}{e.recommendation && <p className="muted">Recommendation: {e.recommendation}</p>}</td></tr>
       ))}</tbody>
     </table></div>
@@ -494,7 +494,7 @@ async function ActivityTab({ actor, pitchId }: { actor: Actor; pitchId: string }
   const names = await userNames(db, events.map((e) => e.actorId));
   return (
     <div className="table-wrap"><table className="data"><thead><tr><th>When</th><th>Who</th><th>What</th></tr></thead>
-      <tbody>{[...events].reverse().map((e) => <tr key={e.id}><td>{fmtDateTime(e.createdAt)}</td><td>{names.get(e.actorId)}</td><td>{ACTION_LABEL[e.action] ?? e.action}</td></tr>)}</tbody></table></div>
+      <tbody>{[...events].reverse().map((e) => <tr key={e.id}><td>{fmtDateTime(e.createdAt)}</td><td>{e.actorId ? names.get(e.actorId) : "Creator (self-submitted)"}</td><td>{ACTION_LABEL[e.action] ?? e.action}</td></tr>)}</tbody></table></div>
   );
 }
 

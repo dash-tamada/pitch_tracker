@@ -282,8 +282,11 @@ export async function getPitchDetail(db: Db, actor: Actor, pitchId: string, now 
     .innerJoin(platforms, eq(platforms.id, platformPitches.platformId)).where(eq(platformPitches.pitchId, pitchId)).orderBy(desc(platformPitches.updatedAt)).limit(1);
   const [rating] = await db.select({ avg: sql<string | null>`round(avg(${ratings.overall})::numeric, 1)`, n: sql<number>`count(*)::int` })
     .from(ratings).where(eq(ratings.pitchId, pitchId));
-  const reviewers = await db.select({ id: users.id, name: users.fullName }).from(users)
-    .where(inArray(users.id, [...new Set(events.map((e) => e.actorId))]));
+  // A portal SUBMIT event has no staff actor (actorId is null there) — exclude it before the lookup.
+  const reviewerIds = [...new Set(events.map((e) => e.actorId).filter((id): id is string => id !== null))];
+  const reviewers = reviewerIds.length
+    ? await db.select({ id: users.id, name: users.fullName }).from(users).where(inArray(users.id, reviewerIds))
+    : [];
   const settings = await getSettings(db);
   const days = Math.floor((now.getTime() - p.pitch.stageEnteredAt.getTime()) / 86_400_000);
   const t = settings.aging_thresholds_days;

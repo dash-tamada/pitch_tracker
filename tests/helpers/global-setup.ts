@@ -13,6 +13,7 @@ export default async function setup(): Promise<void> {
   config({ path: ".env.local", quiet: true });
   const migUrl = new URL(required("TEST_MIGRATION_DATABASE_URL"));
   const platformUrl = new URL(required("TEST_PLATFORM_DATABASE_URL"));
+  const creatorUrl = new URL(required("TEST_CREATOR_DATABASE_URL"));
   const dbName = migUrl.pathname.slice(1);
   if (!/test/i.test(dbName)) throw new Error(`Refusing to reset non-test database "${dbName}"`);
   if (!["localhost", "127.0.0.1"].includes(migUrl.hostname)) throw new Error("Test database must be local");
@@ -36,9 +37,11 @@ export default async function setup(): Promise<void> {
   // access to it (migration 0005) is exercised by the creator-matching and search tests.
   await migPool.query(`CREATE SCHEMA IF NOT EXISTS extensions`);
   await migrate(drizzle(migPool), { migrationsFolder: "./drizzle" });
-  // Local/CI only: migration 0006 creates pitch_platform without a password; give it the throwaway test password.
+  // Local/CI only: migrations 0006/0007 create pitch_platform/pitch_creator without a password; give them the throwaway test passwords.
   const platformPassword = decodeURIComponent(platformUrl.password).replaceAll("'", "''");
   await migPool.query(`ALTER ROLE pitch_platform WITH LOGIN PASSWORD '${platformPassword}'`);
+  const creatorPassword = decodeURIComponent(creatorUrl.password).replaceAll("'", "''");
+  await migPool.query(`ALTER ROLE pitch_creator WITH LOGIN PASSWORD '${creatorPassword}'`);
   await migPool.end();
 
   const { createDb, createPool, createTenantDb } = await import("../../src/server/db/client");

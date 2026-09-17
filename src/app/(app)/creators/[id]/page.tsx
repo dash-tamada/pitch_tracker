@@ -171,7 +171,7 @@ function ActivityTab({ rows, names }: { rows: Awaited<ReturnType<typeof creatorA
       <thead><tr><th>When</th><th>Pitch</th><th>What happened</th><th>By</th></tr></thead>
       <tbody>{rows.map((a, i) => (
         <tr key={i}><td>{fmtDateTime(a.createdAt)}</td><td><Link href={`/pitches/${a.pitchId}`}>{a.title}</Link></td>
-          <td>{ACTION_LABEL[a.action] ?? a.action}</td><td>{names.get(a.actorId) ?? "—"}</td></tr>
+          <td>{ACTION_LABEL[a.action] ?? a.action}</td><td>{a.actorId ? (names.get(a.actorId) ?? "—") : "Creator (self-submitted)"}</td></tr>
       ))}</tbody>
     </table></div>
   );

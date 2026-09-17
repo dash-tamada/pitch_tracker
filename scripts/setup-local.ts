@@ -5,9 +5,10 @@
  * What it does (every secret stays on this computer; nothing is printed or logged):
  *  1. Asks for the Supabase connection details and the certificate file.
  *  2. Connects as `postgres` over TLS with the certificate verified.
- *  3. Sets the `pitch_app` (company work) and `pitch_platform` (sign-in & platform admin) passwords as SCRAM-SHA-256
- *     verifiers computed here, so the plain passwords never reach the server.
- *  4. Signs in as both roles through the transaction pooler to prove the connections work.
+ *  3. Sets the `pitch_app` (company work), `pitch_platform` (sign-in & platform admin) and `pitch_creator`
+ *     (creator-portal identity & own-content access) passwords as SCRAM-SHA-256 verifiers computed here, so
+ *     the plain passwords never reach the server.
+ *  4. Signs in as all three roles through the transaction pooler to prove the connections work.
  *  5. Writes .env.local (git-ignored) with fresh random keys.
  *  6. Optionally creates or resets the platform Super Admin (password typed at a hidden prompt).
  *
@@ -86,21 +87,30 @@ async function main() {
     console.log(`  That password ${problem}.`);
     platformPassword = await ask("PLATFORM_PASSWORD_RETRY", "pitch_platform password: ", { hidden: true });
   }
+  let creatorPassword = await ask("CREATOR_PASSWORD", "Choose a NEW password for pitch_creator (20+ chars, no quotes/spaces, different from the others): ", { hidden: true });
+  const creatorProblem = () => strongEnough(creatorPassword)
+    ?? (creatorPassword === appPassword || creatorPassword === platformPassword ? "must differ from the other passwords" : null);
+  for (let problem = creatorProblem(); problem; problem = creatorProblem()) {
+    console.log(`  That password ${problem}.`);
+    creatorPassword = await ask("CREATOR_PASSWORD_RETRY", "pitch_creator password: ", { hidden: true });
+  }
   const secretKey = await ask("SECRET_KEY", "Supabase secret key for Storage (Project Settings → API Keys → Secret keys): ", { hidden: true });
   if (!/^sb_secret_[A-Za-z0-9_-]{10,}$/.test(secretKey) && !/^eyJ[\w-]+\.[\w-]+\.[\w-]+$/.test(secretKey)) {
     throw new Error("That does not look like a Supabase secret key (sb_secret_…) or a service_role key.");
   }
-  const secrets = [pgPassword, appPassword, platformPassword, secretKey];
+  const secrets = [pgPassword, appPassword, platformPassword, creatorPassword, secretKey];
 
   console.log("\n1/4 Connecting as postgres (certificate verified)…");
   const admin = await tryConnect(`postgresql://postgres.${ref}:${encodeURIComponent(pgPassword)}@${host}:5432/postgres`, ca, "Could not connect as postgres", secrets);
   try {
-    const { rows } = await admin.query<{ app: boolean; platform: boolean }>(
-      "select exists(select 1 from pg_roles where rolname = 'pitch_app') as app, exists(select 1 from pg_roles where rolname = 'pitch_platform') as platform");
+    const { rows } = await admin.query<{ app: boolean; platform: boolean; creator: boolean }>(
+      "select exists(select 1 from pg_roles where rolname = 'pitch_app') as app, exists(select 1 from pg_roles where rolname = 'pitch_platform') as platform, "
+      + "exists(select 1 from pg_roles where rolname = 'pitch_creator') as creator");
     if (!rows[0]?.app) throw new Error("Role pitch_app does not exist. Run the initial database setup first.");
     if (!rows[0]?.platform) throw new Error("Role pitch_platform does not exist. Run deploy/3-multi-tenant-upgrade.sql first.");
-    console.log("2/4 Setting the pitch_app and pitch_platform passwords (hashed on this computer)…");
-    for (const [role, pw] of [["pitch_app", appPassword], ["pitch_platform", platformPassword]] as const) {
+    if (!rows[0]?.creator) throw new Error("Role pitch_creator does not exist. Run drizzle/0007_creator_portal.sql first.");
+    console.log("2/4 Setting the pitch_app, pitch_platform and pitch_creator passwords (hashed on this computer)…");
+    for (const [role, pw] of [["pitch_app", appPassword], ["pitch_platform", platformPassword], ["pitch_creator", creatorPassword]] as const) {
       const verifier = scramVerifier(pw);
       if (!/^SCRAM-SHA-256\$\d+:[A-Za-z0-9+/=]+\$[A-Za-z0-9+/=]+:[A-Za-z0-9+/=]+$/.test(verifier)) throw new Error("internal: bad verifier");
       await admin.query(`ALTER ROLE ${role} WITH LOGIN PASSWORD '${verifier}'`);
@@ -143,6 +153,22 @@ async function main() {
   } finally {
     await plat.end();
   }
+  const creatorUrl = `postgresql://pitch_creator.${ref}:${encodeURIComponent(creatorPassword)}@${host}:6543/postgres`;
+  let cre: pg.Client;
+  try { cre = await tryConnect(creatorUrl, ca, "transaction pooler", secrets); } catch {
+    console.log("  First attempt failed; retrying in 10 seconds…");
+    await new Promise((r) => setTimeout(r, 10_000));
+    cre = await tryConnect(creatorUrl, ca, "Could not sign in as pitch_creator via the transaction pooler", secrets);
+  }
+  try {
+    // Without a creator session (app.company_id/app.creator_id unset) RLS must show nothing — fail closed,
+    // same expectation as pitch_app without a company context.
+    const { rows } = await cre.query<{ usr: string; visible: number }>("select current_user as usr, (select count(*)::int from creators) as visible");
+    if (rows[0]?.usr !== "pitch_creator" || rows[0].visible !== 0) throw new Error(`Unexpected database state for pitch_creator: ${JSON.stringify(rows[0])}`);
+    console.log("  pitch_creator connected; sees no creator data without a session (expected).");
+  } finally {
+    await cre.end();
+  }
 
   console.log("4/4 Writing .env.local…");
   const b64 = (n: number) => randomBytes(n).toString("base64");
@@ -154,6 +180,7 @@ async function main() {
     "TRUST_PROXY=false",
     `DATABASE_URL=${databaseUrl}`,
     `PLATFORM_DATABASE_URL=${platformUrl}`,
+    `CREATOR_DATABASE_URL=${creatorUrl}`,
     `DATABASE_CA_CERT=${Buffer.from(ca).toString("base64")}`,
     "# MFA_ENCRYPTION_KEY must be IDENTICAL in Vercel, otherwise MFA set up locally cannot be read in production.",
     `MFA_ENCRYPTION_KEY=${b64(32)}`,

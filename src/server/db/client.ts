@@ -99,10 +99,70 @@ export function createTenantDb(pool: pg.Pool, companyId: string): Db {
   return drizzle(new TenantPool(pool, companyId) as unknown as pg.Pool, { schema });
 }
 
+/**
+ * Same shape as TenantPool, for the creator-portal role (pitch_creator). Every statement is pinned to
+ * BOTH app.company_id (required) and app.creator_id (nullable — unset during registration, where no
+ * creator session exists yet; the registration RLS policy on `creators` does not need it).
+ */
+export class CreatorPool {
+  private readonly prelude: string;
+
+  constructor(private readonly pool: pg.Pool, readonly companyId: string, readonly creatorId: string | null) {
+    if (!UUID_RE.test(companyId)) throw new Error("CreatorPool: invalid company id");
+    if (creatorId !== null && !UUID_RE.test(creatorId)) throw new Error("CreatorPool: invalid creator id");
+    // Inlined only after strict UUID validation above; set_config(..., true) is transaction-local.
+    this.prelude = `SELECT set_config('app.company_id', '${companyId}', true), `
+      + `set_config('app.creator_id', ${creatorId ? `'${creatorId}'` : "NULL"}, true)`;
+  }
+
+  async query(...args: QueryArgs): Promise<pg.QueryResult> {
+    const client = await this.pool.connect();
+    let broken: Error | undefined;
+    try {
+      await client.query(`BEGIN; ${this.prelude}`);
+      try {
+        const res = await (client.query as (...a: unknown[]) => Promise<pg.QueryResult>)(...args);
+        await client.query("COMMIT");
+        return res;
+      } catch (e) {
+        await client.query("ROLLBACK").catch((re: Error) => { broken = re; });
+        throw e;
+      }
+    } finally {
+      client.release(broken);
+    }
+  }
+
+  async connect() {
+    const client = await this.pool.connect();
+    const prelude = this.prelude;
+    let inTx = false;
+    return {
+      query: async (...args: QueryArgs) => {
+        const text = typeof args[0] === "string" ? args[0] : (args[0] as { text?: string }).text ?? "";
+        const res = await (client.query as (...a: unknown[]) => Promise<pg.QueryResult>)(...args);
+        if (/^\s*begin\b/i.test(text)) { await client.query(prelude); inTx = true; }
+        else if (/^\s*(commit|rollback)\s*$/i.test(text)) inTx = false;
+        return res;
+      },
+      release: (err?: Error | boolean) => {
+        client.release(inTx ? new Error("released inside transaction") : err);
+      },
+    };
+  }
+
+  end(): Promise<void> { return Promise.resolve(); }
+}
+
+export function createCreatorDb(pool: pg.Pool, companyId: string, creatorId: string | null): Db {
+  return drizzle(new CreatorPool(pool, companyId, creatorId) as unknown as pg.Pool, { schema });
+}
+
 /* ───────────── Runtime singletons ───────────── */
 
 let appPool: pg.Pool | undefined;
 let platformDb: Db | undefined;
+let creatorPool: pg.Pool | undefined;
 const tenantCache = new Map<string, Db>();
 const companyContext = new AsyncLocalStorage<{ companyId: string }>();
 
@@ -151,4 +211,59 @@ export function getPlatformDb(): Db {
     platformDb = createDb(url, 5).db;
   }
   return platformDb;
+}
+
+function getCreatorAppPool(): pg.Pool {
+  if (!creatorPool) {
+    const url = process.env.CREATOR_DATABASE_URL;
+    if (!url) throw new Error("CREATOR_DATABASE_URL is not set");
+    creatorPool = createPool(url);
+  }
+  return creatorPool;
+}
+
+let creatorAnonDb: Db | undefined;
+
+/**
+ * Unscoped pitch_creator handle — no app.company_id, no app.creator_id. The only thing a caller can
+ * legitimately do with it is resolve a portal link token to a company id (resolve_creator_portal_company,
+ * a SECURITY DEFINER function that needs no session context at all). Every RLS policy on every ordinary
+ * table compares a column to app_company_id()/app_creator_id(), both NULL here, so every such comparison
+ * is false and nothing else is reachable — this is the "no context ⇒ fail closed" property, not a special case.
+ */
+export function getCreatorAnonDb(): Db {
+  if (!creatorAnonDb) creatorAnonDb = drizzle(getCreatorAppPool(), { schema });
+  return creatorAnonDb;
+}
+
+const creatorTenantCache = new Map<string, Db>();
+
+/**
+ * Creator-portal handle (`pitch_creator`), scoped to one company and — once a creator has
+ * authenticated — one creator. `creatorId: null` is only for registration and login, before any
+ * creator session exists; every other call site passes the authenticated creator's id.
+ */
+export function creatorDb(companyId: string, creatorId: string | null): Db {
+  const key = `${companyId}:${creatorId ?? "-"}`;
+  let db = creatorTenantCache.get(key);
+  if (!db) {
+    db = createCreatorDb(getCreatorAppPool(), companyId, creatorId);
+    if (creatorTenantCache.size > 1000) creatorTenantCache.clear();
+    creatorTenantCache.set(key, db);
+  }
+  return db;
+}
+
+/**
+ * Test-only: points creatorDb()/getCreatorAnonDb() at a different pool (the test database, authenticated
+ * as pitch_creator via TEST_CREATOR_DATABASE_URL) and clears every cached handle, exactly like
+ * setStorageForTests does for the storage port. Creator-portal service functions (creator-portal/auth.ts
+ * etc.) call the module-level getCreatorAnonDb()/creatorDb() directly rather than taking a Db parameter —
+ * unlike the staff services, one logical operation (e.g. registration) needs three differently-scoped
+ * connections in sequence, so the connection is resolved internally; this is what makes that swappable in tests.
+ */
+export function setCreatorAppPoolForTests(pool: pg.Pool): void {
+  creatorPool = pool;
+  creatorAnonDb = undefined;
+  creatorTenantCache.clear();
 }

@@ -68,6 +68,7 @@ export const productionStatus = pgEnum("production_status", [
   "GREENLIT", "PRE_PRODUCTION", "PRODUCTION", "POST_PRODUCTION", "COMPLETED", "RELEASED",
 ]);
 export const jobStatus = pgEnum("job_status", ["PENDING", "RUNNING", "DONE", "FAILED"]);
+export const creatorPortalStatus = pgEnum("creator_portal_status", ["ACTIVE", "DISABLED"]);
 
 /* ───────────────────────── Identity & access ───────────────────────── */
 
@@ -275,14 +276,49 @@ export const creators = pgTable("creators", {
   notes: text("notes"),
   consentBasis: varchar("consent_basis", { length: 60 }),          // e.g. SUBMISSION_AGREEMENT
   consentRecordedAt: timestamp("consent_recorded_at", { withTimezone: true }),
-  createdById: uuid("created_by_id").notNull().references(() => users.id),
+  createdById: uuid("created_by_id").references(() => users.id),   // null for a self-registered creator portal account
   createdAt: createdAt(), updatedAt: updatedAt(), archivedAt: archivedAt(),
+
+  /* ─── Creator portal (self-service registration/login) ───
+   * A self-registered creator authenticates as the `pitch_creator` DB role (see CreatorPool), never as `pitch_app`.
+   * These columns mirror the equivalent staff columns on `users` and get the identical defense-in-depth: RLS plus
+   * a guard trigger stop `pitch_app` (company staff) from ever reading or writing them. */
+  selfRegistered: boolean("self_registered").notNull().default(false),
+  passwordHash: text("password_hash"),
+  passwordChangedAt: timestamp("password_changed_at", { withTimezone: true }),
+  lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+  failedLoginCount: integer("failed_login_count").notNull().default(0),
+  lockedUntil: timestamp("locked_until", { withTimezone: true }),
+  portalStatus: creatorPortalStatus("portal_status").notNull().default("ACTIVE"),
+  /** "New pitch" stays hidden in the portal until this is set (first-time onboarding gate). */
+  profileCompletedAt: timestamp("profile_completed_at", { withTimezone: true }),
 }, (t) => [
   uniqueIndex("creators_company_mobile_uq").on(t.companyId, t.mobileE164).where(sql`${t.mobileE164} IS NOT NULL`),
   uniqueIndex("creators_company_email_uq").on(t.companyId, t.emailNormalized).where(sql`${t.emailNormalized} IS NOT NULL`),
   index("creators_name_trgm_idx").using("gin", sql`${t.nameNormalized} gin_trgm_ops`),
   check("creators_mobile_format_ck", sql`${t.mobileE164} IS NULL OR ${t.mobileE164} ~ '^\\+[1-9][0-9]{7,14}$'`),
   check("creators_years_ck", sql`${t.yearsExperience} IS NULL OR ${t.yearsExperience} BETWEEN 0 AND 80`),
+  // Exactly one authorship path: staff-created (created_by_id) XOR self-registered through the portal.
+  check("creators_author_ck", sql`(${t.createdById} IS NOT NULL) <> ${t.selfRegistered}`),
+  // A self-registered creator must have both an email (their login identifier) and a password.
+  check("creators_portal_identity_ck", sql`NOT ${t.selfRegistered} OR (${t.emailNormalized} IS NOT NULL AND ${t.passwordHash} IS NOT NULL)`),
+]);
+
+/** Sessions for the creator portal — a distinct DB role/table from staff `sessions`, never shared. */
+export const creatorSessions = pgTable("creator_sessions", {
+  companyId: companyId(),
+  id: id(),
+  creatorId: uuid("creator_id").notNull().references(() => creators.id),
+  tokenHash: bytea("token_hash").notNull(),
+  createdAt: createdAt(),
+  lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  ip: inet("ip"),
+  userAgent: varchar("user_agent", { length: 512 }),
+}, (t) => [
+  uniqueIndex("creator_sessions_token_hash_uq").on(t.tokenHash),
+  index("creator_sessions_creator_idx").on(t.creatorId),
 ]);
 
 export const creatorProjects = pgTable("creator_projects", {
@@ -330,7 +366,9 @@ export const pitches = pgTable("pitches", {
   tags: text("tags").array().notNull().default(sql`'{}'::text[]`),
   notes: text("notes"),
   creatorId: uuid("creator_id").notNull().references(() => creators.id),
-  createdById: uuid("created_by_id").notNull().references(() => users.id),
+  createdById: uuid("created_by_id").references(() => users.id),
+  createdByCreatorId: uuid("created_by_creator_id").references(() => creators.id), // set when submitted through the creator portal
+  submittedViaPortal: boolean("submitted_via_portal").notNull().default(false),
 
   // Workflow projection — written ONLY by the workflow engine, in the same transaction as a workflow_event.
   workflowDefinitionId: uuid("workflow_definition_id").notNull().references(() => workflowDefinitions.id),
@@ -353,6 +391,9 @@ export const pitches = pgTable("pitches", {
   index("pitches_title_trgm_idx").using("gin", sql`${t.title} gin_trgm_ops`),
   check("pitches_episodes_ck", sql`${t.episodeCount} IS NULL OR ${t.episodeCount} BETWEEN 1 AND 1000`),
   check("pitches_duration_ck", sql`${t.episodeDurationMin} IS NULL OR ${t.episodeDurationMin} BETWEEN 1 AND 600`),
+  // Exactly one author (staff or portal creator), and submitted_via_portal must agree with which one.
+  check("pitches_author_ck", sql`(${t.createdById} IS NOT NULL) <> (${t.createdByCreatorId} IS NOT NULL)
+    AND ${t.submittedViaPortal} = (${t.createdByCreatorId} IS NOT NULL)`),
 ]);
 
 export const pitchParticipants = pgTable("pitch_participants", {
@@ -376,7 +417,8 @@ export const workflowEvents = pgTable("workflow_events", {
   action: workflowAction("action").notNull(),
   fromStageKey: varchar("from_stage_key", { length: 60 }),
   toStageKey: varchar("to_stage_key", { length: 60 }).notNull(),
-  actorId: uuid("actor_id").notNull().references(() => users.id),
+  actorId: uuid("actor_id").references(() => users.id),
+  actorCreatorId: uuid("actor_creator_id").references(() => creators.id), // the portal SUBMIT event has no staff actor
   fromOwnerId: uuid("from_owner_id").references(() => users.id),
   toOwnerId: uuid("to_owner_id").references(() => users.id),
   remarks: text("remarks"),
@@ -402,6 +444,8 @@ export const workflowEvents = pgTable("workflow_events", {
   check("workflow_events_forward_ck", sql`${t.action} <> 'FORWARD' OR ${t.toOwnerId} IS NOT NULL`),
   // Business rule 19: platform approval must name the platform.
   check("workflow_events_platform_approval_ck", sql`${t.action} <> 'MARK_PLATFORM_APPROVED' OR ${t.platformId} IS NOT NULL`),
+  // Exactly one actor: staff (via the workflow engine) or a portal creator (only ever the initial SUBMIT).
+  check("workflow_events_author_ck", sql`(${t.actorId} IS NOT NULL) <> (${t.actorCreatorId} IS NOT NULL)`),
 ]);
 
 /* ─────────────────────── Documents, versions, images ─────────────────────── */
@@ -413,9 +457,13 @@ export const documents = pgTable("documents", {
   categoryKey: varchar("category_key", { length: 60 }).notNull(), // SCRIPT, SYNOPSIS, PITCH_DECK...
   title: varchar("title", { length: 200 }).notNull(),
   currentVersionId: uuid("current_version_id"),                   // FK added in integrity migration (circular)
-  createdById: uuid("created_by_id").notNull().references(() => users.id),
+  createdById: uuid("created_by_id").references(() => users.id),
+  createdByCreatorId: uuid("created_by_creator_id").references(() => creators.id),
   createdAt: createdAt(), updatedAt: updatedAt(), archivedAt: archivedAt(),
-}, (t) => [index("documents_pitch_idx").on(t.pitchId, t.categoryKey)]);
+}, (t) => [
+  index("documents_pitch_idx").on(t.pitchId, t.categoryKey),
+  check("documents_author_ck", sql`(${t.createdById} IS NOT NULL) <> (${t.createdByCreatorId} IS NOT NULL)`),
+]);
 
 /** Append-only. A new script upload is always a new row. */
 export const documentVersions = pgTable("document_versions", {
@@ -431,13 +479,15 @@ export const documentVersions = pgTable("document_versions", {
   scanStatus: scanStatus("scan_status").notNull().default("PENDING"),
   versionLabel: varchar("version_label", { length: 60 }),          // e.g. "Second draft for Netflix"
   notes: text("notes"),
-  uploadedById: uuid("uploaded_by_id").notNull().references(() => users.id),
+  uploadedById: uuid("uploaded_by_id").references(() => users.id),
+  uploadedByCreatorId: uuid("uploaded_by_creator_id").references(() => creators.id),
   createdAt: createdAt(),
 }, (t) => [
   uniqueIndex("document_versions_doc_version_uq").on(t.documentId, t.versionNo),
   uniqueIndex("document_versions_storage_key_uq").on(t.storageKey),
   check("document_versions_size_ck", sql`${t.sizeBytes} > 0`),
   check("document_versions_version_ck", sql`${t.versionNo} >= 1`),
+  check("document_versions_author_ck", sql`(${t.uploadedById} IS NOT NULL) <> (${t.uploadedByCreatorId} IS NOT NULL)`),
 ]);
 
 /** Scan results arrive after upload; kept separate so document_versions stays immutable. */
@@ -476,7 +526,8 @@ export const documentAccessLogs = pgTable("document_access_logs", {
   id: id(),
   documentVersionId: uuid("document_version_id").notNull().references(() => documentVersions.id),
   pitchId: uuid("pitch_id").notNull().references(() => pitches.id),
-  userId: uuid("user_id").notNull().references(() => users.id),
+  userId: uuid("user_id").references(() => users.id),
+  creatorId: uuid("creator_id").references(() => creators.id), // a portal creator viewing/downloading their own script
   action: accessAction("action").notNull(),
   ip: inet("ip"),
   userAgent: varchar("user_agent", { length: 512 }),
@@ -484,6 +535,7 @@ export const documentAccessLogs = pgTable("document_access_logs", {
 }, (t) => [
   index("document_access_logs_version_idx").on(t.documentVersionId, t.createdAt),
   index("document_access_logs_user_idx").on(t.userId, t.createdAt),
+  check("document_access_logs_actor_ck", sql`(${t.userId} IS NOT NULL) <> (${t.creatorId} IS NOT NULL)`),
 ]);
 
 /* ─────────────────────────────── Ratings ─────────────────────────────── */
@@ -730,7 +782,8 @@ export const uploadIntents = pgTable("upload_intents", {
   originalFilename: varchar("original_filename", { length: 255 }).notNull(),
   declaredSizeBytes: bigint("declared_size_bytes", { mode: "number" }).notNull(),
   quarantineKey: text("quarantine_key").notNull(),
-  createdById: uuid("created_by_id").notNull().references(() => users.id),
+  createdById: uuid("created_by_id").references(() => users.id),   // null when issued to a creator-portal account
+  createdByCreatorId: uuid("created_by_creator_id").references(() => creators.id),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   completedAt: timestamp("completed_at", { withTimezone: true }),
   rejectedReason: varchar("rejected_reason", { length: 200 }),
@@ -739,6 +792,7 @@ export const uploadIntents = pgTable("upload_intents", {
   uniqueIndex("upload_intents_key_uq").on(t.quarantineKey),
   index("upload_intents_user_idx").on(t.createdById, t.createdAt),
   check("upload_intents_target_ck", sql`(${t.kind} = 'CREATOR_PHOTO' AND ${t.creatorId} IS NOT NULL) OR (${t.kind} <> 'CREATOR_PHOTO' AND ${t.pitchId} IS NOT NULL)`),
+  check("upload_intents_author_ck", sql`(${t.createdById} IS NOT NULL) <> (${t.createdByCreatorId} IS NOT NULL)`),
 ]);
 
 /* ───────────────────────────── Multi-tenant platform ───────────────────────────── */
@@ -769,7 +823,13 @@ export const companies = pgTable("companies", {
   archivedAt: archivedAt(),
   createdById: uuid("created_by_id"),
   createdAt: createdAt(), updatedAt: updatedAt(),
-}, (t) => [uniqueIndex("companies_code_uq").on(t.code)]);
+  /** Hashed like every other bearer token here; the raw token is shown to the Company Admin once and never stored.
+   *  Regenerating it (a fresh hash) invalidates old copies of the link without touching already-registered creators. */
+  creatorPortalTokenHash: bytea("creator_portal_token_hash"),
+}, (t) => [
+  uniqueIndex("companies_code_uq").on(t.code),
+  uniqueIndex("companies_creator_portal_token_hash_uq").on(t.creatorPortalTokenHash).where(sql`${t.creatorPortalTokenHash} IS NOT NULL`),
+]);
 
 export const plans = pgTable("plans", {
   key: varchar("key", { length: 40 }).primaryKey(),

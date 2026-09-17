@@ -30,7 +30,7 @@ export interface PitchState {
   currentStageKey: string;
   currentOwnerId: string | null;
   pausedFromStageKey: string | null;
-  createdById: string;
+  createdById: string | null; // null for a pitch submitted through the creator portal
   version: number;
   confidentiality: Clearance;
 }

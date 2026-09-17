@@ -1,19 +1,22 @@
 import { eq } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
-import { createDb, createPool, createTenantDb, type Db } from "@/server/db/client";
-import { platforms } from "@/server/db/schema";
+import { createCreatorDb, createDb, createPool, createTenantDb, setCreatorAppPoolForTests, type Db } from "@/server/db/client";
+import { companies, platforms } from "@/server/db/schema";
 import { createActiveUser } from "@/server/modules/tenancy/bootstrap";
 import { COMPANY_A, COMPANY_B } from "./tenants";
 import { loadActor } from "@/server/modules/authz/actor";
 import type { Actor, Clearance } from "@/server/modules/authz/policy";
 import { createCreator } from "@/server/modules/creators/service";
 import { createPitch } from "@/server/modules/pitches/service";
+import { hashToken, newToken } from "@/server/modules/auth/tokens";
 
 export { COMPANY_A, COMPANY_B };
 
 let appPool: ReturnType<typeof createPool> | undefined;
 let platform: ReturnType<typeof createDb> | undefined;
+let creatorPool: ReturnType<typeof createPool> | undefined;
 const tenants = new Map<string, Db>();
+const creatorTenants = new Map<string, Db>();
 
 /** Company-scoped handle (pitch_app + row-level security) for company A unless another company id is given. */
 export function testDb(companyId: string = COMPANY_A): Db {
@@ -30,10 +33,41 @@ export function platformTestDb(): Db {
   return platform.db;
 }
 
+/** Creator-portal handle (pitch_creator + row-level security), scoped to one company and (once known) one creator. */
+export function creatorTestDb(companyId: string, creatorId: string | null): Db {
+  ensureCreatorPool();
+  const key = `${companyId}:${creatorId ?? "-"}`;
+  let db = creatorTenants.get(key);
+  if (!db) { db = createCreatorDb(creatorPool!, companyId, creatorId); creatorTenants.set(key, db); }
+  return db;
+}
+
+/**
+ * Points the app's own creator-portal singletons (getCreatorAnonDb/creatorDb in db/client.ts, used
+ * directly by src/server/modules/creator-portal/auth.ts) at the test database. Without this, that module
+ * would connect to CREATOR_DATABASE_URL (the dev database) instead of TEST_CREATOR_DATABASE_URL, since it
+ * is not written to take a Db parameter the way the staff services are (see setCreatorAppPoolForTests's
+ * own doc comment for why). Idempotent; call it once, e.g. from a test file's top level or beforeAll.
+ */
+export function ensureCreatorPool(): void {
+  if (creatorPool) return;
+  creatorPool = createPool(process.env.TEST_CREATOR_DATABASE_URL!, 4);
+  setCreatorAppPoolForTests(creatorPool);
+}
+
 export async function closeDb(): Promise<void> {
   await appPool?.end();
   await platform?.pool.end();
-  appPool = undefined; platform = undefined; tenants.clear();
+  await creatorPool?.end();
+  appPool = undefined; platform = undefined; creatorPool = undefined; tenants.clear(); creatorTenants.clear();
+}
+
+/** Generates and stores a fresh creator-portal link for a company (bypasses the staff API); returns the plain token. */
+export async function makePortalLink(companyId: string = COMPANY_A): Promise<string> {
+  ensureCreatorPool(); // registerCreator/loginCreator/etc. must resolve against the test database, not dev
+  const token = newToken();
+  await testDb(companyId).update(companies).set({ creatorPortalTokenHash: hashToken(token) }).where(eq(companies.id, companyId));
+  return token;
 }
 
 export interface TestUser { id: string; email: string; actor: Actor }

@@ -13,7 +13,7 @@ import { can, pitchVisibilityCondition, requirePermission, type Actor } from "@/
 import { writeAudit, type RequestContext } from "@/server/modules/audit/service";
 
 const httpUrl = z.url({ protocol: /^https?$/ }).max(500);
-const CREATOR_TYPES = ["WRITER", "DIRECTOR", "WRITER_DIRECTOR", "PRODUCER", "CREATOR", "OTHER"] as const;
+export const CREATOR_TYPES = ["WRITER", "DIRECTOR", "WRITER_DIRECTOR", "PRODUCER", "CREATOR", "OTHER"] as const;
 const optText = (max: number) => z.string().trim().max(max).optional().transform((v) => (v === "" ? undefined : v));
 
 export const projectSchema = z.object({
@@ -312,7 +312,7 @@ export async function creatorPlatformHistory(db: Db, actor: Actor, id: string) {
 export async function creatorActivity(db: Db, actor: Actor, id: string) {
   requirePermission(actor, "creator.view");
   return db.select({ pitchId: pitches.id, title: pitches.title, action: workflowEvents.action, toStageKey: workflowEvents.toStageKey,
-    actorId: workflowEvents.actorId, createdAt: workflowEvents.createdAt })
+    actorId: workflowEvents.actorId, actorCreatorId: workflowEvents.actorCreatorId, createdAt: workflowEvents.createdAt })
     .from(workflowEvents).innerJoin(pitches, eq(pitches.id, workflowEvents.pitchId))
     .where(and(eq(pitches.creatorId, id), pitchVisibilityCondition(actor))).orderBy(desc(workflowEvents.createdAt)).limit(100);
 }

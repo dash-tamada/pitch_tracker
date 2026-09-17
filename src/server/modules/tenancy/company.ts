@@ -11,6 +11,7 @@ import { AppError, notFound } from "@/server/lib/errors";
 import { parseInput } from "@/server/lib/validation";
 import { requirePermission, type Actor } from "@/server/modules/authz/policy";
 import { writeAudit, type RequestContext } from "@/server/modules/audit/service";
+import { hashToken, newToken } from "@/server/modules/auth/tokens";
 import { companyLimits, storageUsedBytes } from "./limits";
 
 const selfId = sql`public.app_company_id()`;
@@ -91,5 +92,41 @@ export async function removeEmailException(db: Db, actor: Actor, raw: unknown, c
     if (!r.length) throw new AppError("NOT_FOUND", "Exception not found.");
     await writeAudit(tx, { actorId: actor.userId, action: "security.email_exception_removed", resourceType: "company", after: { email: normalized } }, ctx);
   });
+  return { ok: true };
+}
+
+/*
+ * Creator portal registration/login link (Phase 4). The link itself carries a random token; only its keyed
+ * hash (auth/tokens.ts hashToken — the same HMAC used for session tokens) is ever stored, in
+ * companies.creator_portal_token_hash. The plain token is shown to Company Admin exactly once, at
+ * generation time, and is never re-derivable from the database afterwards (see
+ * resolve_creator_portal_company in drizzle/0007_creator_portal.sql, which only ever compares hashes).
+ */
+// The token IS the access control for the link (there is no separate company slug in the URL — a guessable
+// company code must not be enough to reach anything). One link per company serves both registration and,
+// afterwards, login: /portal/<token>. The plain token exists only in memory between generation and the
+// response that carries it back to Company Admin; it is never stored or logged.
+export async function getCreatorPortalLink(db: Db, actor: Actor) {
+  requirePermission(actor, "company.manage");
+  const [c] = await db.select({ enabled: sql<boolean>`(${companies.creatorPortalTokenHash} IS NOT NULL)` }).from(companies).where(eq(companies.id, selfId));
+  if (!c) throw notFound("Company");
+  return { enabled: c.enabled };
+}
+
+/** Generates a new link (or replaces the existing one, immediately invalidating it). The token is returned once. */
+export async function rotateCreatorPortalLink(db: Db, actor: Actor, ctx: RequestContext = {}) {
+  requirePermission(actor, "company.manage");
+  const token = newToken();
+  const [c] = await db.update(companies).set({ creatorPortalTokenHash: hashToken(token) }).where(eq(companies.id, selfId)).returning({ id: companies.id });
+  if (!c) throw notFound("Company");
+  await writeAudit(db, { actorId: actor.userId, action: "company.creator_portal_link_rotated", resourceType: "company", resourceId: actor.companyId ?? undefined }, ctx);
+  return { token, portalPath: `/portal/${token}` };
+}
+
+/** Immediately stops the existing link from working. New registrations and un-authenticated logins stop; existing creator sessions are unaffected. */
+export async function disableCreatorPortalLink(db: Db, actor: Actor, ctx: RequestContext = {}) {
+  requirePermission(actor, "company.manage");
+  await db.update(companies).set({ creatorPortalTokenHash: null }).where(eq(companies.id, selfId));
+  await writeAudit(db, { actorId: actor.userId, action: "company.creator_portal_link_disabled", resourceType: "company", resourceId: actor.companyId ?? undefined }, ctx);
   return { ok: true };
 }

@@ -27,24 +27,30 @@ export function connectionConfig(
   env: Readonly<Record<string, string | undefined>> = process.env,
 ): Pick<PoolConfig, "connectionString" | "ssl"> {
   const url = new URL(connectionString);
-  const ca = decodeCaCert(env.DATABASE_CA_CERT);
   const remote = !LOCAL_HOSTS.has(url.hostname.replace(/^\[|\]$/g, ""));
   const strictEnv = env.APP_ENV === "production" || env.APP_ENV === "staging";
 
+  if (!remote) {
+    // Local Postgres (dev/test) never speaks TLS — regardless of whether DATABASE_CA_CERT happens to be set
+    // in the environment for a *different* (remote) connection string, e.g. PLATFORM_DATABASE_URL pointing at
+    // Supabase while DATABASE_URL points at local Postgres. This check must come before the CA branch below:
+    // env.DATABASE_CA_CERT is a single process-wide variable shared by every connectionConfig() call, so a CA
+    // configured for the remote pool must never leak into the local pool's TLS decision.
+    // Also strip any stray `sslmode`/`ssl*` query parameter (e.g. carried over from a copy-pasted remote
+    // connection string) — `pg` lets that override an explicit `ssl` option, so it must be removed here, not
+    // just set to false, or the client still attempts SSL and the server rejects it with
+    // "The server does not support SSL connections".
+    for (const k of [...url.searchParams.keys()]) if (/^ssl/i.test(k) || k === "uselibpqcompat") url.searchParams.delete(k);
+    return { connectionString: url.toString(), ssl: false };
+  }
+
+  const ca = decodeCaCert(env.DATABASE_CA_CERT);
   if (ca) {
     for (const k of [...url.searchParams.keys()]) if (/^ssl/i.test(k) || k === "uselibpqcompat") url.searchParams.delete(k);
     return { connectionString: url.toString(), ssl: { ca, rejectUnauthorized: true } };
   }
-  if (remote && strictEnv) {
+  if (strictEnv) {
     throw new Error("DATABASE_CA_CERT must be set for a remote database in staging/production (see docs/DEPLOYMENT.md)");
-  }
-  if (!remote) {
-    // Local Postgres (dev/test) never speaks TLS. A connection string that started life as a copy-pasted
-    // remote/Supabase example can carry a stray `sslmode=require` (or similar) query parameter — `pg` lets
-    // that override an explicit `ssl` option, so it must be stripped here, not just set to false, or the
-    // client still attempts SSL and the server rejects it with "The server does not support SSL connections".
-    for (const k of [...url.searchParams.keys()]) if (/^ssl/i.test(k) || k === "uselibpqcompat") url.searchParams.delete(k);
-    return { connectionString: url.toString(), ssl: false };
   }
   return { connectionString };
 }

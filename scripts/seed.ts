@@ -12,4 +12,8 @@ const url = process.env.PLATFORM_DATABASE_URL;
 if (!url) throw new Error("PLATFORM_DATABASE_URL is not set");
 const { db, pool } = createDb(url, 1);
 seedPlatform(db).then(() => { console.log("Platform catalogue seeded."); return pool.end(); })
-  .catch((e: unknown) => { console.error("Seed failed:", e instanceof Error ? (e.cause as { message?: string } | undefined)?.message ?? e.name : "unknown"); process.exit(1); });
+  .catch((e: unknown) => {
+    const cause = e instanceof Error ? (e.cause as { message?: string } | undefined)?.message : undefined;
+    console.error("Seed failed:", e instanceof Error ? e.message : "unknown error", cause ? `\nCause: ${cause}` : "");
+    process.exit(1);
+  });

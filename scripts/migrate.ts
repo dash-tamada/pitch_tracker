@@ -20,7 +20,9 @@ async function main(): Promise<void> {
 }
 
 main().catch((err: unknown) => {
-  // Print message only; connection strings must never be logged.
-  console.error("Migration failed:", err instanceof Error ? err.message : "unknown error");
+  // Print the drizzle-level message plus the underlying Postgres error's own message (never the connection
+  // string itself, and never the raw pg error object, which could carry query parameter values).
+  const cause = err instanceof Error ? (err.cause as { message?: string } | undefined)?.message : undefined;
+  console.error("Migration failed:", err instanceof Error ? err.message : "unknown error", cause ? `\nCause: ${cause}` : "");
   process.exit(1);
 });

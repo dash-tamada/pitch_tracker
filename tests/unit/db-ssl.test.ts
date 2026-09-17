@@ -44,4 +44,18 @@ describe("database TLS configuration", () => {
     expect(url.searchParams.has("sslmode")).toBe(false);
     expect(url.searchParams.get("application_name")).toBe("a");
   });
+
+  it("a CA cert configured for the remote (platform) pool must not leak into the local (tenant) pool's TLS decision", () => {
+    // Realistic .env.local: PLATFORM_DATABASE_URL points at Supabase (needs DATABASE_CA_CERT), DATABASE_URL
+    // points at local Postgres. Both calls to connectionConfig() see the same process.env, so DATABASE_CA_CERT
+    // being set must not force TLS onto the local connection — local Postgres has no SSL to negotiate and
+    // fails with "The server does not support SSL connections" if the client attempts it.
+    const local = "postgres://pitch_app:pw@localhost:5432/pitch_dev";
+    const cfg = connectionConfig(local, { DATABASE_CA_CERT: PEM, APP_ENV: "production" });
+    expect(cfg.ssl).toBe(false);
+
+    // The remote connection in the same environment still gets the CA applied.
+    const remoteCfg = connectionConfig(REMOTE, { DATABASE_CA_CERT: PEM, APP_ENV: "production" });
+    expect(remoteCfg.ssl).toEqual({ ca: PEM, rejectUnauthorized: true });
+  });
 });

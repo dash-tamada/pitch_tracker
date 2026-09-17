@@ -34,11 +34,20 @@ describe("user administration guard rails", () => {
     const r = await createUser(db, team.admin.actor, { email: "New.Reviewer@Example.test", fullName: "New Reviewer", roleKeys: ["EMPLOYEE"] });
     expect(r.invitePath).toMatch(/^\/accept-invite#[A-Za-z0-9_-]{43}$/);
     expect(await code(login(pdb, { email: "new.reviewer@example.test", password: "Film-Reels-2026!" }, { ip: "10.5.5.4" }))).toBe("INVALID_CREDENTIALS"); // not active yet
-    expect(await code(acceptInvitation(pdb, { token: tokenOf(r.invitePath), password: "short" }))).toBe("VALIDATION");
-    await acceptInvitation(pdb, { token: tokenOf(r.invitePath), password: "Film-Reels-2026!" });
-    expect(await code(acceptInvitation(pdb, { token: tokenOf(r.invitePath), password: "Film-Reels-2027!" }))).toBe("VALIDATION"); // single use
+    expect(await code(acceptInvitation(pdb, { token: tokenOf(r.invitePath!), password: "short" }))).toBe("VALIDATION");
+    await acceptInvitation(pdb, { token: tokenOf(r.invitePath!), password: "Film-Reels-2026!" });
+    expect(await code(acceptInvitation(pdb, { token: tokenOf(r.invitePath!), password: "Film-Reels-2027!" }))).toBe("VALIDATION"); // single use
     const s = await login(pdb, { email: "new.reviewer@example.test", password: "Film-Reels-2026!" }, { ip: "10.5.5.5" });
     expect((await resolveSession(pdb, s.token))?.actor.roles.has("EMPLOYEE")).toBe(true);
+  });
+  it("admin sets a tempPassword instead: no invitation link, employee signs in directly and must change password first", async () => {
+    const r = await createUser(db, team.admin.actor, { email: "temp.pw@example.test", fullName: "Temp Pw", roleKeys: ["EMPLOYEE"], tempPassword: "Film-Reels-2026!" });
+    expect(r.invitePath).toBeNull();
+    const s = await login(pdb, { email: "temp.pw@example.test", password: "Film-Reels-2026!" }, { ip: "10.5.5.6" });
+    expect(s.mustChangePassword).toBe(true);
+    expect((await resolveSession(pdb, s.token))?.actor.roles.has("EMPLOYEE")).toBe(true);
+    // A weak tempPassword is refused up front, before any user row is created.
+    expect(await code(createUser(db, team.admin.actor, { email: "temp.pw2@example.test", fullName: "Temp Pw2", roleKeys: ["EMPLOYEE"], tempPassword: "short" }))).toBe("VALIDATION");
   });
   it("admin cannot grant Company Admin, RESTRICTED clearance, change own access, or touch a Company Admin", async () => {
     expect(await code(createUser(db, team.admin.actor, { email: "x1@example.test", fullName: "X One", roleKeys: ["COMPANY_ADMIN"] }))).toBe("FORBIDDEN");

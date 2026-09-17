@@ -9,7 +9,7 @@
  */
 import { and, asc, eq, gt, inArray, isNull, ne, sql } from "drizzle-orm";
 import { z } from "zod";
-import type { Db, DbOrTx } from "@/server/db/client";
+import { getPlatformDb, type Db, type DbOrTx } from "@/server/db/client";
 import { jobOutbox, passwordResetTokens, permissions, pitches, rolePermissions, roles, sessions, userRoles, users } from "@/server/db/schema";
 import { AppError, notFound } from "@/server/lib/errors";
 import { parseInput } from "@/server/lib/validation";
@@ -44,6 +44,10 @@ export const createUserSchema = z.object({
   mobileE164: z.string().regex(/^\+[1-9][0-9]{7,14}$/).optional(),
   department: optionalText(120), designation: optionalText(120), employeeCode: optionalText(40),
   joiningDate: z.iso.date().optional(),
+  // Optional: set this employee's password directly instead of sending an invitation link. Off by default —
+  // see the module docstring. Requesting admin explicitly asked for this despite the trade-off (2026-09-17):
+  // any Admin/Company Admin can then set and see an employee's password, not just this one bootstrap case.
+  tempPassword: z.string().min(1).max(128).optional(),
 }).strict();
 
 async function assertRoleChangeAllowed(db: DbOrTx, actor: Actor, targetUserId: string | null, roleKeys: string[]) {
@@ -72,30 +76,51 @@ async function issueSetPasswordToken(db: DbOrTx, userId: string, ttlMs: number) 
   return token;
 }
 
-/** Invites an employee. Returns the invitation link once so the admin can hand it over if email is not configured. */
+/**
+ * Invites an employee. Returns the invitation link once so the admin can hand it over if email is not configured.
+ * If tempPassword is given instead, the employee is created ACTIVE with that password and no invitation link is
+ * issued — password_hash still can never be written on this (tenant/pitch_app) connection, DB trigger enforced, so
+ * it is hashed here and written in a second step through the identity connection (pitch_platform), same two-step
+ * pattern as the platform's createCompanyAdminWithPassword.
+ */
 export async function createUser(db: Db, actor: Actor, raw: unknown, ctx: RequestContext = {}) {
   requirePermission(actor, "user.manage");
   const input = parseInput(createUserSchema, raw);
   if (input.clearance === "RESTRICTED" && !isCompanyAdmin(actor)) throw new AppError("FORBIDDEN", "Only a Company Admin can grant RESTRICTED clearance.");
   const email = input.email.trim().toLowerCase();
+  if (input.tempPassword) {
+    const errors = passwordPolicyErrors(input.tempPassword, { email, fullName: input.fullName });
+    if (errors.length) throw new AppError("VALIDATION", errors.join(" "), { tempPassword: errors[0]! });
+  }
   try {
-    return await db.transaction(async (tx) => {
+    const { userId, invitePath } = await db.transaction(async (tx) => {
       await assertRoleChangeAllowed(tx, actor, null, input.roleKeys);
       await assertEmailAllowed(tx, email);
       await assertCanAddUser(tx);
       const [exists] = await tx.select({ id: users.id }).from(users).where(eq(users.email, email));
       if (exists) throw new AppError("CONFLICT", "A user with this email already exists in your company.");
-      const [u] = await tx.insert(users).values({ email, fullName: input.fullName, clearance: input.clearance, status: "INVITED",
+      const [u] = await tx.insert(users).values({ email, fullName: input.fullName, clearance: input.clearance, status: input.tempPassword ? "ACTIVE" : "INVITED",
         firstName: input.firstName ?? null, lastName: input.lastName ?? null, mobileE164: input.mobileE164 ?? null, department: input.department ?? null,
         designation: input.designation ?? null, employeeCode: input.employeeCode ?? null, joiningDate: input.joiningDate ?? null })
         .returning({ id: users.id });
       const rs = await tx.select({ id: roles.id }).from(roles).where(inArray(roles.key, input.roleKeys));
       await tx.insert(userRoles).values(rs.map((r) => ({ userId: u!.id, roleId: r.id, grantedById: actor.userId })));
+      if (input.tempPassword) {
+        await writeAudit(tx, { actorId: actor.userId, action: "user.invited", resourceType: "user", resourceId: u!.id,
+          after: { fullName: input.fullName, roles: input.roleKeys, clearance: input.clearance, department: input.department, designation: input.designation, passwordSetDirectly: true } }, ctx);
+        return { userId: u!.id, invitePath: null as string | null };
+      }
       const token = await issueInvitation(tx, u!.id, actor.userId);
       await writeAudit(tx, { actorId: actor.userId, action: "user.invited", resourceType: "user", resourceId: u!.id,
         after: { fullName: input.fullName, roles: input.roleKeys, clearance: input.clearance, department: input.department, designation: input.designation } }, ctx);
-      return { id: u!.id, invitePath: `/accept-invite#${token}` };
+      return { userId: u!.id, invitePath: `/accept-invite#${token}` as string | null };
     });
+    if (input.tempPassword) {
+      const passwordHash = await hashPassword(input.tempPassword);
+      // passwordChangedAt stays null: forces a password change on first sign-in (enforced server-side), same as createCompanyAdminWithPassword.
+      await getPlatformDb().update(users).set({ passwordHash, passwordChangedAt: null }).where(eq(users.id, userId));
+    }
+    return { id: userId, invitePath };
   } catch (e) {
     // Email addresses are unique across the whole platform. An address registered with another company is not visible
     // here (row-level security), so the insert hits the unique index: answer generically, without naming the other company.

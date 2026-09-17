@@ -21,12 +21,13 @@ export default async function UsersPage() {
       {users && (
         <>
           <ActionForm endpoint="/api/v1/admin/users" title="+ Invite employee" submitLabel="Send invitation" collapsed after="result"
-            description="The address must use your company email domain (or an exception on the Company page). If email is not configured, copy the invitation link shown and send it privately. It works once and expires in 72 hours."
+            description="The address must use your company email domain (or an exception on the Company page). If email is not configured, copy the invitation link shown and send it privately. It works once and expires in 72 hours. Set a temp password below instead to skip the invitation link entirely — the employee signs in with it directly and is forced to change it on first login. Note: using this means you will know their initial password."
             fields={[{ name: "fullName", label: "Full name", type: "text", required: true }, { name: "email", label: "Work email", type: "email", required: true },
               { name: "department", label: "Department", type: "text" }, { name: "designation", label: "Designation", type: "text" },
               { name: "employeeCode", label: "Employee code", type: "text" }, { name: "mobileE164", label: "Mobile (+91…)", type: "text" },
               { name: "joiningDate", label: "Joining date", type: "date" },
-              { name: "roleKeys", label: "Roles", type: "checkboxes", required: true, options: ROLE_OPTS }, { name: "clearance", label: "Clearance", type: "select", options: CLEARANCE, defaultValue: "CONFIDENTIAL" }]} />
+              { name: "roleKeys", label: "Roles", type: "checkboxes", required: true, options: ROLE_OPTS }, { name: "clearance", label: "Clearance", type: "select", options: CLEARANCE, defaultValue: "CONFIDENTIAL" },
+              { name: "tempPassword", label: "Temp password (optional)", type: "password", hint: "Leave blank to send an invitation link instead (recommended — you never see their password). If set, no invitation link is created; tell the employee this password privately." }]} />
           <div className="table-wrap"><table className="data">
             <thead><tr><th>Name</th><th>Email</th><th>Department</th><th>Roles</th><th>Clearance</th><th>Status</th><th>MFA</th><th>Last sign-in</th><th>Manage</th></tr></thead>
             <tbody>{users.map((u) => (

@@ -62,7 +62,17 @@ GRANT pitch_app TO pitch_migrator WITH ADMIN OPTION, INHERIT FALSE, SET FALSE;
 ```sql
 ALTER ROLE pitch_platform LOGIN PASSWORD '[PLACEHOLDER_LOCAL_PASSWORD_3]';
 ```
-The app connects as `pitch_app` for company work — every statement is limited to one company by row-level security, and it **cannot** alter tables, delete pitches, edit history or read password hashes — and as `pitch_platform` for sign-in and the Super Admin console, which **cannot** read scripts, pitches or creators.
+Migration 0007 creates a fourth role, `pitch_creator` (creator-portal self-service accounts, isolated from staff); give it a local password the same way, after running `npm run db:migrate`:
+```sql
+ALTER ROLE pitch_creator LOGIN PASSWORD '[PLACEHOLDER_LOCAL_PASSWORD_4]';
+```
+Both `ALTER ROLE` statements need the same superuser connection you used in step 2 — `pitch_migrator` cannot grant `LOGIN`/passwords to other roles itself (it was created with `CREATEDB`, not `CREATEROLE`). Then add its connection string to `.env.local`:
+```
+CREATOR_DATABASE_URL=postgresql://pitch_creator:[PLACEHOLDER_LOCAL_PASSWORD_4]@localhost:5432/pitch_dev
+```
+(URL-encode the password if it contains characters like `@`, `:`, `/` or `%`.)
+
+The app connects as `pitch_app` for company work — every statement is limited to one company by row-level security, and it **cannot** alter tables, delete pitches, edit history or read password hashes — as `pitch_platform` for sign-in and the Super Admin console, which **cannot** read scripts, pitches or creators — and as `pitch_creator` for the creator portal (`/portal/<token>`), which can only ever see or change one signed-in creator's own rows.
 
 ### 3. Configure
 ```bash

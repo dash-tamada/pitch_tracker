@@ -186,13 +186,29 @@ describe("platform Super Admin", () => {
   it("creates a company, provisions defaults and invites its first Company Admin, who can then sign in", async () => {
     const created = await createCompany(pdb, platformActor, { code: "GAMMA", name: "Gamma Talkies", planKey: "STARTER", emailDomains: ["gamma.example.test"],
       adminEmail: "owner@gamma.example.test", adminFullName: "Gamma Owner" });
-    await acceptInvitation(pdb, { token: tokenOf(created.invitePath), password: PASSWORD });
+    // No adminTempPassword was given above, so createCompany always issues an invitation link here.
+    expect(created.invitePath).not.toBeNull();
+    await acceptInvitation(pdb, { token: tokenOf(created.invitePath!), password: PASSWORD });
     const s = await login(pdb, { email: "owner@gamma.example.test", password: PASSWORD }, { ip: "10.30.0.1" });
     expect(s.mfaRequired).toBe(false); // MFA is no longer mandatory for company-side roles, including Company Admin
     const session = await resolveSession(pdb, s.token);
     expect(session?.actor.companyId).toBe(created.id);
     expect(session?.actor.roles.has("COMPANY_ADMIN")).toBe(true);
     expect(await code(createCompany(pdb, platformActor, { code: "GAMMA", name: "Dup", planKey: "STARTER", adminEmail: "x@gamma2.example.test", adminFullName: "Dup Owner" }))).toBe("CONFLICT");
+  });
+
+  it("creates a company with adminTempPassword set: no invitation link, admin can sign in directly and must change password first", async () => {
+    const created = await createCompany(pdb, platformActor, { code: "DELTA", name: "Delta Studios", planKey: "STARTER", emailDomains: ["delta.example.test"],
+      adminEmail: "owner@delta.example.test", adminFullName: "Delta Owner", adminTempPassword: PASSWORD });
+    expect(created.invitePath).toBeNull();
+    const s = await login(pdb, { email: "owner@delta.example.test", password: PASSWORD }, { ip: "10.30.0.2" });
+    expect(s.mustChangePassword).toBe(true);
+    const session = await resolveSession(pdb, s.token);
+    expect(session?.actor.companyId).toBe(created.id);
+    expect(session?.actor.roles.has("COMPANY_ADMIN")).toBe(true);
+    // A weak/short temp password is refused up front, before any company or user row is created.
+    expect(await code(createCompany(pdb, platformActor, { code: "EPSILON", name: "Epsilon", planKey: "STARTER",
+      adminEmail: "owner@epsilon.example.test", adminFullName: "Epsilon Owner", adminTempPassword: "short" }))).toBe("VALIDATION");
   });
 
   it("suspending a company revokes its sessions and blocks sign-in; reactivating restores access", async () => {

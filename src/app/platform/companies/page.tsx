@@ -13,7 +13,7 @@ export default async function CompaniesPage() {
     <>
       <PageHeader title="Companies" subtitle="Each company is a separate, isolated workspace." />
       <ActionForm endpoint="/api/v1/platform/companies" title="+ New company" submitLabel="Create company and invite admin" collapsed after="result"
-        description="Creates the workspace with default roles, workflow and lists, then invites the first Company Admin. Copy the invitation link shown after creating and send it privately; it works once and expires in 72 hours."
+        description="Creates the workspace with default roles, workflow and lists, then invites the first Company Admin. Copy the invitation link shown after creating and send it privately; it works once and expires in 72 hours. Set a temporary password below instead if you'd rather skip the invitation link (e.g. no email provider configured) — the admin signs in with it directly and is forced to change it on first login."
         fields={[
           { name: "name", label: "Company name", type: "text", required: true },
           { name: "code", label: "Company code", type: "text", required: true, hint: "2–12 capitals/digits, e.g. TAM. Used in pitch codes." },
@@ -22,6 +22,7 @@ export default async function CompaniesPage() {
           { name: "endsOn", label: "Subscription ends on", type: "date" },
           { name: "adminFullName", label: "Company Admin full name", type: "text", required: true },
           { name: "adminEmail", label: "Company Admin email", type: "email", required: true },
+          { name: "adminTempPassword", label: "Company Admin temp password", type: "password", hint: "Optional — leave blank to send an invitation link instead. If set, no invitation link is created and this is shown once below; tell the admin privately." },
           { name: "primaryEmail", label: "Company contact email", type: "email" },
           { name: "city", label: "City", type: "text" },
           { name: "country", label: "Country", type: "text" },

@@ -100,16 +100,25 @@ export const createCompanySchema = z.object({
   emailDomains: z.array(DOMAIN).max(20).default([]),
   adminEmail: z.email().max(254),
   adminFullName: z.string().trim().min(2).max(120),
+  // Optional: set the first Company Admin's password directly instead of issuing an invitation link — useful
+  // when no email provider is configured (e.g. local dev) so there is nothing to copy out of the server log.
+  adminTempPassword: z.string().min(1).max(128).optional(),
 }).strict();
 
 /**
- * Creates a company, its subscription and email policy, provisions its defaults and invites its first Company Admin.
+ * Creates a company, its subscription and email policy, provisions its defaults, and either invites its first
+ * Company Admin (default) or, when adminTempPassword is given, creates that admin ACTIVE with the password set
+ * directly (same two-step identity-connection write as createCompanyAdminWithPassword).
  * If provisioning fails after the company row is created, the company stays PENDING_SETUP and the error is returned; defaults provisioning is idempotent.
  */
 export async function createCompany(db: Db, actor: Actor, raw: unknown, ctx: RequestContext = {}) {
   requirePlatform(actor);
   const input = parseInput(createCompanySchema, raw);
   const adminEmail = input.adminEmail.trim().toLowerCase();
+  if (input.adminTempPassword) {
+    const errors = passwordPolicyErrors(input.adminTempPassword, { email: adminEmail, fullName: input.adminFullName });
+    if (errors.length) throw new AppError("VALIDATION", errors.join(" "), { adminTempPassword: errors[0]! });
+  }
   const [plan] = await db.select({ key: plans.key }).from(plans).where(and(eq(plans.key, input.planKey), eq(plans.active, true)));
   if (!plan) throw new AppError("VALIDATION", "Choose an active plan.", { planKey: "Invalid" });
   if (input.endsOn && input.endsOn < new Date().toISOString().slice(0, 10)) throw new AppError("VALIDATION", "End date is in the past.", { endsOn: "Invalid" });
@@ -139,28 +148,42 @@ export async function createCompany(db: Db, actor: Actor, raw: unknown, ctx: Req
     throw e;
   }
 
-  const invite = await provisionAndInvite(db, actor, companyId, adminEmail, input.adminFullName, input.subscriptionStatus === "ACTIVE" ? "ACTIVE" : "TRIAL", ctx);
+  const invite = await provisionAndInvite(db, actor, companyId, adminEmail, input.adminFullName, input.subscriptionStatus === "ACTIVE" ? "ACTIVE" : "TRIAL", ctx, input.adminTempPassword);
   return { id: companyId, ...invite };
 }
 
-async function provisionAndInvite(db: Db, actor: Actor, companyId: string, adminEmail: string, adminFullName: string, finalStatus: "ACTIVE" | "TRIAL", ctx: RequestContext) {
+async function provisionAndInvite(
+  db: Db, actor: Actor, companyId: string, adminEmail: string, adminFullName: string, finalStatus: "ACTIVE" | "TRIAL", ctx: RequestContext, tempPassword?: string,
+) {
   const company = tenantDb(companyId);
-  const invitePath = await withCompany(companyId, async () => {
+  // password_hash can only be written on the identity connection (pitch_platform) — pitch_app is refused by a DB
+  // trigger (defence in depth) — so hash it here and write it in a second step below, same as createCompanyAdminWithPassword.
+  const passwordHash = tempPassword ? await hashPassword(tempPassword) : null;
+  const { userId, invitePath } = await withCompany(companyId, async () => {
     await ensureCompanyDefaults(company);
     try {
       return await company.transaction(async (tx) => {
-        const [u] = await tx.insert(users).values({ email: adminEmail, fullName: adminFullName, status: "INVITED", clearance: "RESTRICTED" }).returning({ id: users.id });
+        const [u] = await tx.insert(users).values({ email: adminEmail, fullName: adminFullName, status: passwordHash ? "ACTIVE" : "INVITED", clearance: "RESTRICTED" })
+          .returning({ id: users.id });
         const [role] = await tx.select({ id: roles.id }).from(roles).where(eq(roles.key, "COMPANY_ADMIN"));
         await tx.insert(userRoles).values({ userId: u!.id, roleId: role!.id });
+        if (passwordHash) {
+          await writeAudit(tx, { actorId: null, action: "user.invited_by_platform", resourceType: "user", resourceId: u!.id, after: { roles: ["COMPANY_ADMIN"], passwordSetDirectly: true } }, ctx);
+          return { userId: u!.id, invitePath: null as string | null };
+        }
         const token = await issueInvitation(tx, u!.id, null);
         await writeAudit(tx, { actorId: null, action: "user.invited_by_platform", resourceType: "user", resourceId: u!.id, after: { roles: ["COMPANY_ADMIN"] } }, ctx);
-        return `/accept-invite#${token}`;
+        return { userId: u!.id, invitePath: `/accept-invite#${token}` as string | null };
       });
     } catch (e) {
       if (pgCode(e) === "23505") throw new AppError("CONFLICT", "The Company Admin email address cannot be used. It may already be registered.", { adminEmail: "Unavailable" });
       throw e;
     }
   });
+  if (passwordHash) {
+    // passwordChangedAt stays null: forces a password change on first sign-in (enforced server-side), same as createCompanyAdminWithPassword.
+    await db.update(users).set({ passwordHash, passwordChangedAt: null }).where(eq(users.id, userId));
+  }
   await db.update(companies).set({ status: finalStatus, setupCompletedAt: null }).where(eq(companies.id, companyId));
   await writeAudit(db, { companyId, actorId: actor.userId, action: "company.provisioned", resourceType: "company", resourceId: companyId, after: { status: finalStatus } }, ctx);
   return { invitePath };

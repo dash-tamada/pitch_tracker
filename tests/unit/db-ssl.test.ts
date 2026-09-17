@@ -27,9 +27,21 @@ describe("database TLS configuration", () => {
     expect(() => connectionConfig(REMOTE, { APP_ENV: "staging" })).toThrow(/DATABASE_CA_CERT/);
   });
 
-  it("leaves local development and tests unchanged", () => {
-    const local = "postgres://pitch_app:pw@localhost:5432/pitch_dev";
-    expect(connectionConfig(local, { APP_ENV: "production" })).toEqual({ connectionString: local });
+  it("leaves a remote connection string with no CA unchanged outside production/staging", () => {
     expect(connectionConfig(REMOTE, { APP_ENV: "development" })).toEqual({ connectionString: REMOTE });
+  });
+
+  it("local Postgres always gets ssl: false, and any stray sslmode/ssl* query param is stripped", () => {
+    const local = "postgres://pitch_app:pw@localhost:5432/pitch_dev";
+    expect(connectionConfig(local, { APP_ENV: "production" })).toEqual({ connectionString: local, ssl: false });
+
+    // A connection string that started life as a copy-pasted remote/Supabase example can carry sslmode=require;
+    // pg would otherwise honor that and try (and fail) to negotiate TLS with a local server that doesn't speak it.
+    const localWithStraySsl = `${local}?sslmode=require&application_name=a`;
+    const cfg = connectionConfig(localWithStraySsl, { APP_ENV: "development" });
+    expect(cfg.ssl).toBe(false);
+    const url = new URL(cfg.connectionString!);
+    expect(url.searchParams.has("sslmode")).toBe(false);
+    expect(url.searchParams.get("application_name")).toBe("a");
   });
 });

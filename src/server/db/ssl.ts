@@ -38,5 +38,13 @@ export function connectionConfig(
   if (remote && strictEnv) {
     throw new Error("DATABASE_CA_CERT must be set for a remote database in staging/production (see docs/DEPLOYMENT.md)");
   }
+  if (!remote) {
+    // Local Postgres (dev/test) never speaks TLS. A connection string that started life as a copy-pasted
+    // remote/Supabase example can carry a stray `sslmode=require` (or similar) query parameter — `pg` lets
+    // that override an explicit `ssl` option, so it must be stripped here, not just set to false, or the
+    // client still attempts SSL and the server rejects it with "The server does not support SSL connections".
+    for (const k of [...url.searchParams.keys()]) if (/^ssl/i.test(k) || k === "uselibpqcompat") url.searchParams.delete(k);
+    return { connectionString: url.toString(), ssl: false };
+  }
   return { connectionString };
 }

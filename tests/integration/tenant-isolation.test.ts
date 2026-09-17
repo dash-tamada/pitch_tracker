@@ -188,7 +188,7 @@ describe("platform Super Admin", () => {
       adminEmail: "owner@gamma.example.test", adminFullName: "Gamma Owner" });
     await acceptInvitation(pdb, { token: tokenOf(created.invitePath), password: PASSWORD });
     const s = await login(pdb, { email: "owner@gamma.example.test", password: PASSWORD }, { ip: "10.30.0.1" });
-    expect(s.mfaRequired).toBe(true); // Company Admin must use MFA
+    expect(s.mfaRequired).toBe(false); // MFA is no longer mandatory for company-side roles, including Company Admin
     const session = await resolveSession(pdb, s.token);
     expect(session?.actor.companyId).toBe(created.id);
     expect(session?.actor.roles.has("COMPANY_ADMIN")).toBe(true);

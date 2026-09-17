@@ -2,7 +2,9 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { and, eq, sql } from "drizzle-orm";
 import { auditLogs, pitchParticipants, pitches, platforms, sessions, users, workflowEvents } from "@/server/db/schema";
-import { login, logout, resolveSession, LOCKOUT_THRESHOLD, SESSION_IDLE_MS } from "@/server/modules/auth/service";
+import { changeOwnPassword, login, logout, resolveSession, LOCKOUT_THRESHOLD, SESSION_IDLE_MS } from "@/server/modules/auth/service";
+import { hashPassword } from "@/server/modules/auth/password";
+import { encryptSecret, hotp, newTotpSecret, stepAt } from "@/server/modules/auth/totp";
 import { canViewPitch, pitchVisibilityCondition } from "@/server/modules/authz/policy";
 import { findCreatorMatches, createCreator } from "@/server/modules/creators/service";
 import { createPitch } from "@/server/modules/pitches/service";
@@ -187,10 +189,59 @@ describe("authentication", () => {
     await db.update(users).set({ status: "DISABLED" }).where(eq(users.id, u.id));
     expect(await resolveSession(pdb, res2.token)).toBeNull();
   });
-  it("CEO login requires MFA before the session is trusted", async () => {
+  it("company-side CEO login does not force MFA (removed for company roles — see MFA_REQUIRED_ROLES)", async () => {
     const u = await makeUser(db, "Login CEO", ["CEO"], { password, clearance: "RESTRICTED" });
     const res = await login(pdb, { email: u.email, password }, { ip: "10.0.0.5" });
+    expect(res.mfaRequired).toBe(false);
+    expect((await resolveSession(pdb, res.token))?.actor.mfaSatisfied).toBe(true);
+  });
+  it("a Platform (Super Admin) account's login still forces MFA regardless of MFA_REQUIRED_ROLES", async () => {
+    const platformEmail = `platform.login.${Date.now()}@example.test`;
+    await pdb.insert(users).values({
+      email: platformEmail, fullName: "Platform Login Test", scope: "PLATFORM", companyId: null, status: "ACTIVE",
+      passwordHash: await hashPassword(password), passwordChangedAt: new Date(),
+    });
+    const res = await login(pdb, { email: platformEmail, password }, { ip: "10.0.0.6" });
     expect(res.mfaRequired).toBe(true);
     expect((await resolveSession(pdb, res.token))?.actor.mfaSatisfied).toBe(false);
+  });
+});
+
+describe("voluntary password change (step-up: current password + fresh TOTP)", () => {
+  it("rejects a wrong current password, a bad code and a weak new password; succeeds only with all three right, and revokes other sessions but not this one", async () => {
+    const password = "Correct-Horse-Battery-1!";
+    const u = await makeUser(db, "Change Password User", ["EMPLOYEE"], { password });
+    const secret = newTotpSecret();
+    await pdb.update(users).set({ mfaEnabled: true, mfaSecretEnc: encryptSecret(secret) }).where(eq(users.id, u.id));
+
+    const login1 = await login(pdb, { email: u.email, password }, { ip: "10.2.2.1" });
+    const login2 = await login(pdb, { email: u.email, password }, { ip: "10.2.2.2" });
+    const s1 = (await resolveSession(pdb, login1.token))!;
+    const validCode = hotp(secret, stepAt(Date.now()));
+
+    expect(await errCode(changeOwnPassword(pdb, s1.actor, s1.sessionId,
+      { currentPassword: "totally-wrong", newPassword: "New-Correct-Password-1!", code: validCode }))).toBe("INVALID_CREDENTIALS");
+    expect(await errCode(changeOwnPassword(pdb, s1.actor, s1.sessionId,
+      { currentPassword: password, newPassword: "New-Correct-Password-1!", code: "000000" }))).toBe("VALIDATION");
+    expect(await errCode(changeOwnPassword(pdb, s1.actor, s1.sessionId,
+      { currentPassword: password, newPassword: "short", code: validCode }))).toBe("VALIDATION");
+
+    // None of the failed attempts should have consumed the TOTP step or changed anything.
+    await changeOwnPassword(pdb, s1.actor, s1.sessionId, { currentPassword: password, newPassword: "New-Correct-Password-1!", code: validCode });
+
+    expect(await errCode(login(pdb, { email: u.email, password }, { ip: "10.2.2.3" }))).toBe("INVALID_CREDENTIALS");
+    expect((await login(pdb, { email: u.email, password: "New-Correct-Password-1!" }, { ip: "10.2.2.4" })).token).toBeTruthy();
+
+    expect(await resolveSession(pdb, login1.token)).not.toBeNull(); // the session that made the change survives
+    expect(await resolveSession(pdb, login2.token)).toBeNull();     // every other session is revoked
+  });
+
+  it("refuses when two-factor authentication is not set up", async () => {
+    const password = "Correct-Horse-Battery-2!";
+    const u = await makeUser(db, "No MFA User", ["EMPLOYEE"], { password });
+    const res = await login(pdb, { email: u.email, password }, { ip: "10.2.2.5" });
+    const s = (await resolveSession(pdb, res.token))!;
+    expect(await errCode(changeOwnPassword(pdb, s.actor, s.sessionId,
+      { currentPassword: password, newPassword: "New-Correct-Password-2!", code: "123456" }))).toBe("MFA_REQUIRED");
   });
 });

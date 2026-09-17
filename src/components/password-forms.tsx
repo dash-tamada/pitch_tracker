@@ -55,6 +55,40 @@ export function ForgotPasswordForm() {
   );
 }
 
+/** Voluntary password change for an already signed-in, MFA-set-up account: current password + new password + a fresh authenticator code. */
+export function ChangePasswordForm() {
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+  async function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setError(null);
+    const f = new FormData(e.currentTarget);
+    if (f.get("newPassword") !== f.get("confirm")) { setError("New passwords do not match."); return; }
+    setBusy(true);
+    try {
+      await api("POST", "/api/v1/auth/password/change", {
+        currentPassword: f.get("currentPassword"), newPassword: f.get("newPassword"), code: f.get("code"),
+      });
+      setDone(true);
+    } catch (err) { setError(err instanceof Error ? err.message : "Failed"); } finally { setBusy(false); }
+  }
+  if (done) return <form><h1>Password changed</h1><p>Your other sessions have been signed out. This one stays signed in.</p></form>;
+  return (
+    <form onSubmit={submit}>
+      <h1>Change password</h1>
+      {error && <p className="error" role="alert">{error}</p>}
+      <label className="field">Current password<input name="currentPassword" type="password" autoComplete="current-password" required maxLength={128} /></label>
+      <p className="subtle">At least 6 characters. Mix upper and lower case, numbers or symbols — or use 16+ characters.</p>
+      <label className="field">New password<input name="newPassword" type="password" autoComplete="new-password" required minLength={6} maxLength={128} /></label>
+      <label className="field">Confirm new password<input name="confirm" type="password" autoComplete="new-password" required /></label>
+      <label className="field">6-digit code from your authenticator app
+        <input name="code" inputMode="numeric" pattern="\d{6}" maxLength={6} required autoComplete="one-time-code" /></label>
+      <button className="btn" disabled={busy}>{busy ? "Please wait…" : "Change password"}</button>
+    </form>
+  );
+}
+
 export function MfaEnrol({ enabled }: { enabled: boolean }) {
   const [uri, setUri] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);

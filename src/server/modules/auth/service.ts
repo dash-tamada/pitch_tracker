@@ -1,4 +1,4 @@
-import { and, eq, gt, isNull, sql } from "drizzle-orm";
+import { and, eq, gt, isNull, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { Db, DbOrTx } from "@/server/db/client";
 import { companies, loginAttempts, sessions, users } from "@/server/db/schema";
@@ -10,6 +10,7 @@ import type { Actor } from "@/server/modules/authz/policy";
 import { parseInput } from "@/server/lib/validation";
 import { getDummyHash, hashPassword, passwordPolicyErrors, verifyPassword } from "./password";
 import { hashIdentifier, hashToken, newToken } from "./tokens";
+import { decryptSecret, verifyTotp } from "./totp";
 
 export const SESSION_ABSOLUTE_MS = 12 * 60 * 60 * 1000;  // 12 h
 export const SESSION_IDLE_MS = 30 * 60 * 1000;           // 30 min
@@ -144,6 +145,49 @@ export async function completeRequiredPasswordChange(db: Db, actor: Actor, raw: 
     if (errors.length) throw new AppError("VALIDATION", errors.join(" "), { password: errors[0]! });
     await tx.update(users).set({ passwordHash: await hashPassword(password), passwordChangedAt: new Date(), failedLoginCount: 0, lockedUntil: null }).where(eq(users.id, u.id));
     await writeAudit(tx, { companyId: u.companyId, actorId: u.id, action: "auth.password_set_initial", resourceType: "user", resourceId: u.id }, ctx);
+    return { ok: true };
+  });
+}
+
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1).max(128),
+  newPassword: z.string().min(1).max(128),
+  code: z.string().regex(/^\d{6}$/, "Enter the 6-digit code."),
+}).strict();
+
+/**
+ * Voluntary password change for an already-authenticated, MFA-verified session (any scope, including
+ * Platform Super Admin). Requires re-proving both the current password and a fresh TOTP code — a
+ * step-up check, since the session's own MFA verification could be minutes or hours old. On success,
+ * every other session for this account is revoked; the caller's own session is left alone.
+ */
+export async function changeOwnPassword(db: Db, actor: Actor, sessionId: string, raw: unknown, ctx: RequestContext = {}, now = new Date()): Promise<{ ok: true }> {
+  const { currentPassword, newPassword, code } = parseInput(changePasswordSchema, raw);
+  return db.transaction(async (tx) => {
+    const [u] = await tx.select({
+      id: users.id, email: users.email, fullName: users.fullName, passwordHash: users.passwordHash,
+      mfaEnabled: users.mfaEnabled, mfaSecretEnc: users.mfaSecretEnc, mfaLastStep: users.mfaLastStep, companyId: users.companyId,
+    }).from(users).where(eq(users.id, actor.userId)).for("update");
+    if (!u || !u.passwordHash) throw new AppError("UNAUTHENTICATED", "Please sign in.");
+
+    const currentOk = await verifyPassword(u.passwordHash, currentPassword);
+    if (!currentOk) throw new AppError("INVALID_CREDENTIALS", "Current password is incorrect.", { currentPassword: "Incorrect" });
+
+    if (!u.mfaEnabled || !u.mfaSecretEnc) throw new AppError("MFA_REQUIRED", "Set up two-factor authentication before changing your password.");
+    const step = verifyTotp(decryptSecret(u.mfaSecretEnc), code, now.getTime(), u.mfaLastStep);
+    if (step === null) throw new AppError("VALIDATION", "That authenticator code is not valid.", { code: "Invalid" });
+
+    const errors = passwordPolicyErrors(newPassword, { email: u.email, fullName: u.fullName });
+    if (errors.length) throw new AppError("VALIDATION", errors.join(" "), { newPassword: errors[0]! });
+    if (await verifyPassword(u.passwordHash, newPassword)) {
+      throw new AppError("VALIDATION", "New password must be different from your current password.", { newPassword: "Reuse" });
+    }
+
+    await tx.update(users).set({ passwordHash: await hashPassword(newPassword), passwordChangedAt: now, mfaLastStep: step })
+      .where(eq(users.id, u.id));
+    await tx.update(sessions).set({ revokedAt: now })
+      .where(and(eq(sessions.userId, u.id), isNull(sessions.revokedAt), ne(sessions.id, sessionId)));
+    await writeAudit(tx, { companyId: u.companyId, actorId: u.id, action: "auth.password_changed", resourceType: "user", resourceId: u.id }, ctx);
     return { ok: true };
   });
 }

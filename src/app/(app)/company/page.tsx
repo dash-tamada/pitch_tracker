@@ -3,6 +3,7 @@ import { requirePageSession } from "@/server/lib/page-session";
 import { can } from "@/server/modules/authz/policy";
 import { getMyCompany } from "@/server/modules/tenancy/company";
 import { ActionForm } from "@/components/action-form";
+import { CreatorPortalLinkPanel } from "@/components/creator-portal-link-panel";
 import { fmtDate, PageHeader, Stat } from "@/components/ui";
 
 const lim = (v: number | null | undefined, unit = "") => (v == null ? "Unlimited" : `${v}${unit}`);
@@ -48,6 +49,7 @@ export default async function CompanyPage() {
         <ActionForm endpoint="/api/v1/company/email-exceptions/remove" title="Remove exception" submitLabel="Remove" collapsed danger
           fields={[{ name: "email", label: "Email", type: "email", required: true }]} />
       </section>
+      <CreatorPortalLinkPanel />
     </>
   );
 }

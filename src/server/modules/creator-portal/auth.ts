@@ -33,6 +33,11 @@ const BAD_LINK = () => new AppError("NOT_FOUND", "This registration link is not 
 function pgCode(e: unknown): string | undefined {
   return (e as { cause?: { code?: string } })?.cause?.code ?? (e as { code?: string })?.code;
 }
+// creators has two separate unique indexes (email, mobile) — a 23505 on the insert could be either one,
+// so the Postgres-reported constraint name (not a guess) decides which field the error points at.
+function pgConstraint(e: unknown): string | undefined {
+  return (e as { cause?: { constraint?: string } })?.cause?.constraint ?? (e as { constraint?: string })?.constraint;
+}
 // db.execute(sql`...`) returns raw driver rows: timestamptz columns come back as ISO strings, not the Date
 // objects drizzle's query builder (.select()) would give — a string compares to a Date with `>`/`<` by first
 // coercing the Date to a number and the string to NaN via ToNumber, so the comparison is silently always
@@ -106,7 +111,12 @@ export async function registerCreator(raw: unknown, ctx: RequestContext = {}, no
       profileCompletedAt: now,
     });
   } catch (e) {
-    if (pgCode(e) === "23505") throw new AppError("CONFLICT", "An account with this email already exists. Try logging in instead.", { email: "Already registered" });
+    if (pgCode(e) === "23505") {
+      if (pgConstraint(e) === "creators_company_mobile_uq") {
+        throw new AppError("CONFLICT", "This mobile number is already registered to another account.", { mobile: "Already registered" });
+      }
+      throw new AppError("CONFLICT", "An account with this email already exists. Try logging in instead.", { email: "Already registered" });
+    }
     throw e;
   }
 

@@ -6,6 +6,7 @@ import { loginCreator, logoutCreator, registerCreator, resolveCreatorSession, re
 import { closeDb, COMPANY_A, COMPANY_B, creatorTestDb, makePortalLink, testDb } from "../helpers/db";
 
 const errCode = async (p: Promise<unknown>) => { try { await p; return "OK"; } catch (e) { return (e as { code?: string }).code ?? String(e); } };
+const errFields = async (p: Promise<unknown>) => { try { await p; return undefined; } catch (e) { return (e as { fields?: Record<string, string> }).fields; } };
 
 let tokenA: string;
 let tokenB: string;
@@ -48,7 +49,21 @@ describe("creator portal registration", () => {
   it("rejects a duplicate email within the same company", async () => {
     const email = `dup.${Date.now()}@example.test`;
     await registerCreator({ token: tokenA, creatorType: "WRITER", fullName: "First", email, password: "correct horse battery staple 9" });
-    expect(await errCode(registerCreator({ token: tokenA, creatorType: "WRITER", fullName: "Second", email, password: "correct horse battery staple 9" }))).toBe("CONFLICT");
+    const dup = registerCreator({ token: tokenA, creatorType: "WRITER", fullName: "Second", email, password: "correct horse battery staple 9" });
+    expect(await errCode(dup)).toBe("CONFLICT");
+    // The conflict is genuinely the email — must not be mislabeled as a mobile-number conflict below.
+    expect(await errFields(registerCreator({ token: tokenA, creatorType: "WRITER", fullName: "Third", email, password: "correct horse battery staple 9" }))).toEqual({ email: "Already registered" });
+  });
+
+  it("rejects a duplicate mobile number within the same company, distinct from an email conflict", async () => {
+    // creators has two separate unique indexes (email, mobile) — a real bug here reported every 23505 as
+    // an email conflict regardless of which index actually fired, which is exactly what this test guards.
+    const mobile = `+9198765${Date.now() % 100000}`;
+    await registerCreator({ token: tokenA, creatorType: "WRITER", fullName: "Mobile First", mobile, email: `mob1.${Date.now()}@example.test`, password: "correct horse battery staple 9" });
+    const dup = registerCreator({ token: tokenA, creatorType: "WRITER", fullName: "Mobile Second", mobile, email: `mob2.${Date.now()}@example.test`, password: "correct horse battery staple 9" });
+    expect(await errCode(dup)).toBe("CONFLICT");
+    expect(await errFields(registerCreator({ token: tokenA, creatorType: "WRITER", fullName: "Mobile Third", mobile, email: `mob3.${Date.now()}@example.test`, password: "correct horse battery staple 9" })))
+      .toEqual({ mobile: "Already registered" });
   });
 
   it("allows the SAME email to register independently in a different company (company-scoped identity)", async () => {

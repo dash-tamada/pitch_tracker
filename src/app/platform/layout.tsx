@@ -16,7 +16,7 @@ export default async function PlatformLayout({ children }: { children: React.Rea
       </nav>
       <main className="main">
         <div className="topbar"><span className="subtle">Super Admin · customer scripts and pitches are not accessible from this console</span>
-          <div className="head-actions"><LogoutButton /></div></div>
+          <div className="head-actions"><Link href="/forgot-password" className="btn-secondary">Reset password</Link><LogoutButton /></div></div>
         {children}
       </main>
     </div>

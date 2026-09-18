@@ -3,6 +3,7 @@
  * Company-scoped connection: row-level security returns only the caller's company row; column grants allow
  * only profile/branding columns to change (never status, plan, code or retention).
  */
+import { randomUUID, createHash } from "node:crypto";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { Db } from "@/server/db/client";
@@ -12,25 +13,117 @@ import { parseInput } from "@/server/lib/validation";
 import { requirePermission, type Actor } from "@/server/modules/authz/policy";
 import { writeAudit, type RequestContext } from "@/server/modules/audit/service";
 import { hashToken, newToken } from "@/server/modules/auth/tokens";
+import { IMAGE_TYPES, detectAndValidate, extensionOf } from "@/server/modules/storage/file-type";
+import { SIGNED_URL_TTL_SECONDS } from "@/server/modules/storage";
+import type { StoragePort } from "@/server/modules/storage/port";
 import { companyLimits, storageUsedBytes } from "./limits";
 
 const selfId = sql`public.app_company_id()`;
 
 /** Minimal branding for every signed-in page. */
 export async function companyBranding(db: Db) {
-  const [c] = await db.select({ name: companies.name, code: companies.code, color: companies.brandPrimaryColor, setupCompletedAt: companies.setupCompletedAt, status: companies.status })
+  const [c] = await db.select({ name: companies.name, code: companies.code, color: companies.brandPrimaryColor, logoKey: companies.logoKey,
+    setupCompletedAt: companies.setupCompletedAt, status: companies.status })
     .from(companies).where(eq(companies.id, selfId));
   return c ?? null;
 }
 
+/** Short-lived read URL for the sidebar/company page — logoKey is a private storage key, never a public URL. */
+export async function companyLogoUrl(db: Db, storage: StoragePort, logoKey: string | null): Promise<string | null> {
+  if (!logoKey) return null;
+  return storage.createSignedReadUrl(logoKey, SIGNED_URL_TTL_SECONDS() * 5, undefined, { inline: true });
+}
+
+const MAX_LOGO_BYTES = 2 * 1024 * 1024; // a sidebar/header mark, not a document — kept small deliberately
+
+/**
+ * Logo upload, mirroring documents/service.ts's quarantine-and-validate flow (issue a single-object signed
+ * URL into quarantine → browser PUTs the file → this re-reads the bytes itself and content-sniffs them)
+ * but self-contained here rather than added to upload_intents: that table's kind enum and its
+ * upload_intents_target_ck constraint are a database migration, and this task is scoped to application code
+ * only. Nothing is trusted about the quarantine key it is handed back except that it was one this same
+ * function issued to this same company (the quarantine path is namespaced by company id and a random UUID,
+ * so it cannot be guessed or reused across companies).
+ */
+export async function createLogoUploadUrl(db: Db, actor: Actor, storage: StoragePort, raw: unknown) {
+  requirePermission(actor, "company.manage");
+  const { filename, sizeBytes } = parseInput(z.object({ filename: z.string().trim().min(1).max(255), sizeBytes: z.number().int().min(1) }).strict(), raw);
+  const ext = extensionOf(filename);
+  if (!(ext in IMAGE_TYPES)) throw new AppError("VALIDATION", `Allowed file types: ${[...new Set(Object.keys(IMAGE_TYPES))].join(", ").toUpperCase()}.`, { filename: "Type not allowed" });
+  if (sizeBytes > MAX_LOGO_BYTES) throw new AppError("VALIDATION", `File is larger than ${Math.round(MAX_LOGO_BYTES / 1048576)} MB.`, { sizeBytes: "Too large" });
+  if (!actor.companyId) throw new AppError("FORBIDDEN", "You do not have permission to do this.");
+  const quarantineKey = `company/${actor.companyId}/logo/quarantine/${randomUUID()}.${ext}`;
+  const { url } = await storage.createSignedUploadUrl(quarantineKey);
+  return { uploadUrl: url, quarantineKey, maxBytes: MAX_LOGO_BYTES };
+}
+
+const completeLogoSchema = z.object({
+  quarantineKey: z.string().trim().min(1).max(300), filename: z.string().trim().min(1).max(255), sizeBytes: z.number().int().min(1),
+}).strict();
+
+export async function completeLogoUpload(db: Db, actor: Actor, storage: StoragePort, raw: unknown, ctx: RequestContext = {}) {
+  requirePermission(actor, "company.manage");
+  const input = parseInput(completeLogoSchema, raw);
+  if (!actor.companyId) throw new AppError("FORBIDDEN", "You do not have permission to do this.");
+  // The key must be one this actor's own createLogoUploadUrl call could have produced — never trust a
+  // client-supplied storage key otherwise (it would let one company move/read another's objects by guessing
+  // or reusing a path).
+  const prefix = `company/${actor.companyId}/logo/quarantine/`;
+  if (!input.quarantineKey.startsWith(prefix) || !/^[0-9a-f-]{36}\.[a-z0-9]{1,5}$/.test(input.quarantineKey.slice(prefix.length))) {
+    throw new AppError("VALIDATION", "Invalid upload.");
+  }
+  if (input.sizeBytes > MAX_LOGO_BYTES) throw new AppError("VALIDATION", `File is larger than ${Math.round(MAX_LOGO_BYTES / 1048576)} MB.`, { sizeBytes: "Too large" });
+
+  let bytes: Buffer | null;
+  try { bytes = await storage.download(input.quarantineKey, MAX_LOGO_BYTES); } catch { throw new AppError("VALIDATION", `File is larger than ${Math.round(MAX_LOGO_BYTES / 1048576)} MB.`); }
+  if (!bytes) throw new AppError("VALIDATION", "The file has not finished uploading.");
+  const verdict = detectAndValidate(bytes, input.filename, IMAGE_TYPES);
+  if (!verdict.ok) {
+    await storage.remove([input.quarantineKey]).catch(() => undefined);
+    throw new AppError("VALIDATION", verdict.reason, { file: verdict.reason });
+  }
+  const sha256 = createHash("sha256").update(bytes).digest("hex");
+  const finalKey = `company/${actor.companyId}/logo/logo-${randomUUID()}.${verdict.type.ext}`;
+  await storage.move(input.quarantineKey, finalKey);
+  try {
+    const old = await db.transaction(async (tx) => {
+      const [before] = await tx.select({ logoKey: companies.logoKey }).from(companies).where(eq(companies.id, selfId)).for("update");
+      await tx.update(companies).set({ logoKey: finalKey }).where(eq(companies.id, selfId));
+      await writeAudit(tx, { actorId: actor.userId, action: "company.logo_updated", resourceType: "company", before: { logoKey: before?.logoKey ?? null }, after: { logoKey: finalKey, sha256 } }, ctx);
+      return before?.logoKey ?? null;
+    });
+    if (old) await storage.remove([old]).catch(() => undefined);
+  } catch (e) {
+    await storage.remove([finalKey]).catch(() => undefined);
+    throw e;
+  }
+  return { ok: true };
+}
+
+export async function removeCompanyLogo(db: Db, actor: Actor, storage: StoragePort, ctx: RequestContext = {}) {
+  requirePermission(actor, "company.manage");
+  const old = await db.transaction(async (tx) => {
+    const [before] = await tx.select({ logoKey: companies.logoKey }).from(companies).where(eq(companies.id, selfId)).for("update");
+    if (!before?.logoKey) return null;
+    await tx.update(companies).set({ logoKey: null }).where(eq(companies.id, selfId));
+    await writeAudit(tx, { actorId: actor.userId, action: "company.logo_removed", resourceType: "company", before: { logoKey: before.logoKey } }, ctx);
+    return before.logoKey;
+  });
+  if (old) await storage.remove([old]).catch(() => undefined);
+  return { ok: true };
+}
+
 export async function getMyCompany(db: Db, actor: Actor) {
   requirePermission(actor, "company.manage");
-  const [company] = await db.select({ id: companies.id, code: companies.code, name: companies.name, legalName: companies.legalName, pitchCodePrefix: companies.pitchCodePrefix,
-    brandPrimaryColor: companies.brandPrimaryColor, website: companies.website, industry: companies.industry, country: companies.country, state: companies.state,
+  const [row] = await db.select({ id: companies.id, code: companies.code, name: companies.name, legalName: companies.legalName, pitchCodePrefix: companies.pitchCodePrefix,
+    brandPrimaryColor: companies.brandPrimaryColor, logoKey: companies.logoKey, website: companies.website, industry: companies.industry, country: companies.country, state: companies.state,
     city: companies.city, address: companies.address, contactPerson: companies.contactPerson, contactPhone: companies.contactPhone, primaryEmail: companies.primaryEmail,
     status: companies.status, setupCompletedAt: companies.setupCompletedAt, retentionDays: companies.retentionDays })
     .from(companies).where(eq(companies.id, selfId));
-  if (!company) throw notFound("Company");
+  if (!row) throw notFound("Company");
+  // logoKey is a private storage key, never handed to a browser as-is (see companyLogoUrl's own note) — it
+  // never leaves this function; callers that need to render the logo call companyLogoUrl with it directly.
+  const { logoKey, ...company } = row;
   const { limits, subscriptionStatus, planKey } = await companyLimits(db);
   const [plan] = planKey ? await db.select({ name: plans.name }).from(plans).where(eq(plans.key, planKey)) : [];
   const [sub] = await db.select({ endsOn: subscriptions.endsOn }).from(subscriptions).where(eq(subscriptions.companyId, selfId));
@@ -39,7 +132,8 @@ export async function getMyCompany(db: Db, actor: Actor) {
   const domains = (await db.select({ d: companyEmailDomains.domain }).from(companyEmailDomains).orderBy(asc(companyEmailDomains.domain))).map((r) => r.d);
   const exceptions = await db.select({ email: companyAllowedEmails.email, reason: companyAllowedEmails.reason, createdAt: companyAllowedEmails.createdAt })
     .from(companyAllowedEmails).orderBy(asc(companyAllowedEmails.email));
-  return { company, subscription: { planKey, planName: plan?.name ?? null, status: subscriptionStatus, endsOn: sub?.endsOn ?? null, limits },
+  return { company: { ...company, hasLogo: Boolean(logoKey) },
+    subscription: { planKey, planName: plan?.name ?? null, status: subscriptionStatus, endsOn: sub?.endsOn ?? null, limits },
     usage: { usersActive: u?.active ?? 0, usersInvited: u?.invited ?? 0, storageBytes: await storageUsedBytes(db) }, domains, exceptions };
 }
 

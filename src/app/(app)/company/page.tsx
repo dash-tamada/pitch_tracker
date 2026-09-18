@@ -4,6 +4,7 @@ import { can } from "@/server/modules/authz/policy";
 import { getMyCompany } from "@/server/modules/tenancy/company";
 import { ActionForm } from "@/components/action-form";
 import { CreatorPortalLinkPanel } from "@/components/creator-portal-link-panel";
+import { LogoUploadPanel } from "@/components/logo-upload-panel";
 import { fmtDate, PageHeader, Stat } from "@/components/ui";
 
 const lim = (v: number | null | undefined, unit = "") => (v == null ? "Unlimited" : `${v}${unit}`);
@@ -28,6 +29,7 @@ export default async function CompanyPage() {
         <Stat label="Storage used" value={`${(d.usage.storageBytes / 1024 ** 2).toFixed(1)} MB`} hint={`Limit: ${d.subscription.limits.storage_bytes == null ? "Unlimited" : `${(d.subscription.limits.storage_bytes / 1024 ** 3).toFixed(0)} GB`}`} />
         <Stat label="Subscription ends" value={fmtDate(d.subscription.endsOn)} />
       </div>
+      <LogoUploadPanel hasLogo={c.hasLogo} logoUrl={c.hasLogo ? "/api/v1/company/logo" : null} companyName={c.name} />
       <ActionForm endpoint="/api/v1/company" method="PATCH" title="Profile & branding" submitLabel="Save" collapsed
         fields={[
           { name: "name", label: "Company name", type: "text", defaultValue: c.name }, { name: "legalName", label: "Legal name", type: "text", defaultValue: c.legalName ?? undefined },

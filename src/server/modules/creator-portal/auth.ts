@@ -30,12 +30,14 @@ const LOCKOUT_MS = 15 * 60 * 1000;
 
 const INVALID = () => new AppError("INVALID_CREDENTIALS", "Email or password is incorrect.");
 const BAD_LINK = () => new AppError("NOT_FOUND", "This registration link is not valid or has been disabled.");
-function pgCode(e: unknown): string | undefined {
+// Exported for creator-portal/profile.ts, which hits the same two unique indexes on a profile edit
+// that changes mobile/email — the "which field actually conflicted" logic must not be duplicated.
+export function pgCode(e: unknown): string | undefined {
   return (e as { cause?: { code?: string } })?.cause?.code ?? (e as { code?: string })?.code;
 }
 // creators has two separate unique indexes (email, mobile) — a 23505 on the insert could be either one,
 // so the Postgres-reported constraint name (not a guess) decides which field the error points at.
-function pgConstraint(e: unknown): string | undefined {
+export function pgConstraint(e: unknown): string | undefined {
   return (e as { cause?: { constraint?: string } })?.cause?.constraint ?? (e as { constraint?: string })?.constraint;
 }
 // db.execute(sql`...`) returns raw driver rows: timestamptz columns come back as ISO strings, not the Date
@@ -101,14 +103,15 @@ export async function registerCreator(raw: unknown, ctx: RequestContext = {}, no
   // the read-back entirely; every later statement reconnects scoped to this specific creatorId.
   const creatorId = randomUUID();
   try {
-    // The registration form already collects everything the handoff calls "profile" (creator type, full
-    // name, mobile) — there is no separate profile step, so profileCompletedAt is set right here. This is
-    // what lets the portal go straight to "New Pitch" after registration instead of forever showing a
-    // completion prompt: profile_completed_at would otherwise stay NULL forever (nothing else ever sets it).
+    // profileCompletedAt is deliberately left NULL here: registration only collects login identity
+    // (email/password) plus the bare minimum (type, name, mobile) to create the row — it is not the
+    // profile. The full profile (location, languages, experience, bio, agency, previous companies,
+    // website, IMDB/Wikipedia/other links, projects worked on) is a separate step the portal gates
+    // "New pitch" behind — see creator-portal/profile.ts's updateMyProfile, the only place this column
+    // is ever set. This matches the column's own doc comment in schema.ts.
     await regDb.insert(creators).values({
       id: creatorId, creatorType: input.creatorType, fullName: input.fullName, nameNormalized: normalizeName(input.fullName),
       mobileE164, emailNormalized: email, selfRegistered: true, passwordHash, passwordChangedAt: now, portalStatus: "ACTIVE",
-      profileCompletedAt: now,
     });
   } catch (e) {
     if (pgCode(e) === "23505") {

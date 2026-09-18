@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { requireCreatorPageSession } from "@/server/lib/creator-page-session";
 import { listMyPitches } from "@/server/modules/creator-portal/pitch";
@@ -9,6 +10,9 @@ export default async function PortalPitchesPage({ params }: { params: Promise<{ 
   await connection();
   const { token } = await params;
   const { companyId, creator } = await requireCreatorPageSession(token);
+  // "New pitch" (and this dashboard) stays gated behind profile setup — see profile.ts / schema.ts's own
+  // doc comment on profileCompletedAt. A creator who has not completed it yet is sent there first.
+  if (!creator.profileCompleted) redirect(`/portal/${token}/profile`);
   const pitches = await listMyPitches(companyId, creator.creatorId);
 
   return (
@@ -20,6 +24,7 @@ export default async function PortalPitchesPage({ params }: { params: Promise<{ 
         </div>
         <div className="head-actions">
           <a className="btn-inline" href={`/portal/${token}/pitches/new`}>New pitch</a>
+          <a className="btn-secondary" href={`/portal/${token}/profile`}>My profile</a>
           <PortalLogoutButton token={token} />
         </div>
       </div>

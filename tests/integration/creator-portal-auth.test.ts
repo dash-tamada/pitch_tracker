@@ -36,9 +36,9 @@ describe("creator portal registration", () => {
 
     const session = await resolveCreatorSession(COMPANY_A, r.token);
     expect(session?.creatorId).toBe(r.creatorId);
-    // Registration collects everything the handoff calls "profile" (creator type, name, mobile) in one
-    // step — there is no separate profile-completion step, so this is true immediately.
-    expect(session?.profileCompleted).toBe(true);
+    // Registration is identity only (email/password + the bare minimum to create the row) — the actual
+    // profile (location, bio, projects, etc.) is a separate, later step, so this must still be false.
+    expect(session?.profileCompleted).toBe(false);
   });
 
   it("rejects an unknown/disabled link token", async () => {

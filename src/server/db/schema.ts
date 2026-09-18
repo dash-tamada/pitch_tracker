@@ -336,11 +336,14 @@ export const creatorProjects = pgTable("creator_projects", {
   posterKey: text("poster_key"),
   description: text("description"),
   externalLinks: jsonb("external_links").notNull().default(sql`'[]'::jsonb`),
-  createdById: uuid("created_by_id").notNull().references(() => users.id),
+  createdById: uuid("created_by_id").references(() => users.id),  // null for a portal-added project (see created_by_creator_id)
+  createdByCreatorId: uuid("created_by_creator_id").references(() => creators.id),
   createdAt: createdAt(), updatedAt: updatedAt(), archivedAt: archivedAt(),
 }, (t) => [
   index("creator_projects_creator_idx").on(t.creatorId),
   check("creator_projects_year_ck", sql`${t.releaseYear} IS NULL OR ${t.releaseYear} BETWEEN 1900 AND 2100`),
+  // Exactly one authorship path: staff-added (created_by_id) XOR added by the creator through the portal.
+  check("creator_projects_author_ck", sql`(${t.createdById} IS NOT NULL) <> (${t.createdByCreatorId} IS NOT NULL)`),
 ]);
 
 /* ─────────────────────────────── Pitches ─────────────────────────────── */

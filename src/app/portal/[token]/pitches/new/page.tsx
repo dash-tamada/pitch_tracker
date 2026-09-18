@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { creatorDb } from "@/server/db/client";
 import { requireCreatorPageSession } from "@/server/lib/creator-page-session";
@@ -8,6 +9,8 @@ export default async function PortalNewPitchPage({ params }: { params: Promise<{
   await connection();
   const { token } = await params;
   const { companyId, creator } = await requireCreatorPageSession(token);
+  // Same gate as the dashboard — a creator could otherwise reach this URL directly, bypassing the redirect there.
+  if (!creator.profileCompleted) redirect(`/portal/${token}/profile`);
   const db = creatorDb(companyId, creator.creatorId);
   const lookups = await getLookups(db);
   const active = { FORMAT: lookups.FORMAT?.filter((l) => l.active) ?? [], LANGUAGE: lookups.LANGUAGE?.filter((l) => l.active) ?? [], GENRE: lookups.GENRE?.filter((l) => l.active) ?? [] };

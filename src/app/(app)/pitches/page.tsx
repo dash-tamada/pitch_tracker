@@ -40,8 +40,8 @@ export default async function PitchesPage({ searchParams }: { searchParams: Prom
       <PageHeader title="Pitches" subtitle="Every story, where it is, and who has it."
         actions={<>
           <Link className={view === "table" ? "btn-inline" : "btn-secondary"} href={qs({ view: "table" })}>Table</Link>
-          <Link className={view === "cards" ? "btn-inline" : "btn-secondary"} href={qs({ view: "cards" })}>Cards</Link>
-          <Link className={view === "kanban" ? "btn-inline" : "btn-secondary"} href={qs({ view: "kanban" })}>Kanban</Link>
+          <Link className={view === "cards" ? "btn-inline" : "btn-secondary"} href={qs({ view: "cards" })}>Grid</Link>
+          <Link className={view === "kanban" ? "btn-inline" : "btn-secondary"} href={qs({ view: "kanban" })}>Cards</Link>
           {can(actor, "data.export") && <a className="btn-secondary" href={`/api/v1/exports?${new URLSearchParams({ kind: "pitches", ...Object.fromEntries(Object.entries(query).filter(([k]) => k !== "sort")) }).toString()}`}>Export CSV</a>}
           {can(actor, "pitch.create") && <Link className="btn-inline" href="/pitches/new">+ New pitch</Link>}
         </>} />

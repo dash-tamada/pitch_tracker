@@ -18,12 +18,12 @@ import { randomUUID, createHash } from "node:crypto";
 import { and, eq, inArray, isNull, max, sql } from "drizzle-orm";
 import { z } from "zod";
 import { creatorDb, type Db } from "@/server/db/client";
-import { documents, documentVersions, lookupValues, pitches, uploadIntents } from "@/server/db/schema";
+import { documentAccessLogs, documents, documentVersions, lookupValues, pitches, uploadIntents } from "@/server/db/schema";
 import { AppError, notFound } from "@/server/lib/errors";
 import { parseInput } from "@/server/lib/validation";
 import { auditPortalAction } from "@/server/modules/creator-portal/auth";
 import { DOCUMENT_TYPES, detectAndValidate, extensionOf, sanitizeFilename } from "@/server/modules/storage/file-type";
-import { MAX_UPLOAD_BYTES } from "@/server/modules/storage";
+import { MAX_UPLOAD_BYTES, SIGNED_URL_TTL_SECONDS } from "@/server/modules/storage";
 import type { StoragePort } from "@/server/modules/storage/port";
 import type { RequestContext } from "@/server/modules/audit/service";
 
@@ -193,4 +193,51 @@ export async function listMyPitchDocuments(companyId: string, creatorId: string,
     id: d.id, categoryKey: d.categoryKey, title: d.title, createdAt: d.createdAt,
     versions: versions.filter((v) => v.documentId === d.id),
   }));
+}
+
+/**
+ * A creator viewing/downloading their OWN uploaded document — the same 60-second signed URL and
+ * access-logging guarantee staff get (documents/service.ts's downloadVersion/viewVersion), scoped to the
+ * creator's own pitches by creator_own_document_versions RLS (0007_creator_portal.sql §9), which was
+ * granted at the same time as the upload path but never had application code calling it until now.
+ */
+async function loadMyDownloadableVersion(companyId: string, creatorId: string, versionId: string) {
+  const db = creatorDb(companyId, creatorId);
+  // creator_own_document_versions / creator_own_documents RLS already limit this join to versions on the
+  // creator's own pitches — a stranger's or made-up versionId both come back empty, no existence oracle
+  // (same pattern as getMyPitch in pitch.ts).
+  const [row] = await db.select({ v: documentVersions, pitchId: documents.pitchId })
+    .from(documentVersions).innerJoin(documents, eq(documents.id, documentVersions.documentId))
+    .where(eq(documentVersions.id, versionId));
+  if (!row) throw notFound("Document");
+  if (row.v.scanStatus === "INFECTED" || row.v.scanStatus === "FAILED" || row.v.scanStatus === "PENDING") {
+    throw new AppError("FORBIDDEN", "This file is blocked until it passes security checks.");
+  }
+  return { db, row };
+}
+
+/**
+ * "Every download is recorded" (the same promise shown to staff) is not best-effort for creators either:
+ * this insert is awaited for real, not swallowed — only the separate portal audit-trail call is best-effort.
+ * creator_log_own_access's WITH CHECK independently re-derives ownership from document_versions → documents
+ * → pitches, so this insert fails closed even if loadMyDownloadableVersion's own check were ever wrong.
+ */
+async function logMyDocumentAccess(db: Db, creatorId: string, row: { v: typeof documentVersions.$inferSelect; pitchId: string }, action: "DOWNLOAD" | "VIEW") {
+  await db.insert(documentAccessLogs).values({ documentVersionId: row.v.id, pitchId: row.pitchId, creatorId, action });
+  await auditPortalAction(db, action === "DOWNLOAD" ? "creator_portal.document_downloaded" : "creator_portal.document_viewed", "pitch", row.pitchId, { documentVersionId: row.v.id });
+}
+
+/** 60-second signed URL forced as attachment — mirrors documents/service.ts's downloadVersion. */
+export async function getMyDownloadUrl(companyId: string, creatorId: string, versionId: string, storage: StoragePort) {
+  const { db, row } = await loadMyDownloadableVersion(companyId, creatorId, versionId);
+  await logMyDocumentAccess(db, creatorId, row, "DOWNLOAD");
+  return storage.createSignedReadUrl(row.v.storageKey, SIGNED_URL_TTL_SECONDS(), row.v.originalFilename);
+}
+
+/** Inline-preview URL + mime/filename for DocumentPreview — mirrors documents/service.ts's viewVersion. */
+export async function getMyViewUrl(companyId: string, creatorId: string, versionId: string, storage: StoragePort) {
+  const { db, row } = await loadMyDownloadableVersion(companyId, creatorId, versionId);
+  await logMyDocumentAccess(db, creatorId, row, "VIEW");
+  const url = await storage.createSignedReadUrl(row.v.storageKey, SIGNED_URL_TTL_SECONDS(), row.v.originalFilename, { inline: true, contentType: row.v.detectedMime });
+  return { url, mime: row.v.detectedMime, filename: row.v.originalFilename };
 }

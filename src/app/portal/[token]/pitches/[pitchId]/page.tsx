@@ -6,6 +6,7 @@ import { AppError } from "@/server/lib/errors";
 import { getLookups } from "@/server/modules/lookups/service";
 import { getMyPitch } from "@/server/modules/creator-portal/pitch";
 import { listMyPitchDocuments } from "@/server/modules/creator-portal/documents";
+import { DocumentViewButton } from "@/components/document-view-button";
 import { PortalUploadPanel } from "@/components/portal-upload-panel";
 
 const STAGE_LABEL: Record<string, string> = { REJECTED: "Rejected", APPROVED: "Approved" };
@@ -50,7 +51,7 @@ export default async function PortalPitchDetailPage({ params }: { params: Promis
         ) : (
           <div className="table-wrap">
             <table>
-              <thead><tr><th>Category</th><th>Title</th><th>Latest version</th><th>File</th></tr></thead>
+              <thead><tr><th>Category</th><th>Title</th><th>Latest version</th><th>File</th><th></th></tr></thead>
               <tbody>
                 {documents.map((d) => {
                   const latest = d.versions[0];
@@ -59,6 +60,14 @@ export default async function PortalPitchDetailPage({ params }: { params: Promis
                       <td>{d.categoryKey}</td><td>{d.title}</td>
                       <td>{latest ? `v${latest.versionNo}` : "—"}</td>
                       <td>{latest?.originalFilename ?? "—"}</td>
+                      <td style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        {latest && (
+                          <>
+                            <DocumentViewButton versionId={latest.id} viewUrl={`/api/v1/portal/${token}/pitches/${pitchId}/documents/${latest.id}/view`} />
+                            <a className="btn-secondary" href={`/api/v1/portal/${token}/pitches/${pitchId}/documents/${latest.id}/download`} rel="noreferrer">Download</a>
+                          </>
+                        )}
+                      </td>
                     </tr>
                   );
                 })}

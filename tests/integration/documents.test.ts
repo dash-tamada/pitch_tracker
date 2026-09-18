@@ -2,11 +2,14 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { auditLogs, documentAccessLogs, documentVersions } from "@/server/db/schema";
 import {
-  completeUpload, createUploadIntent, downloadVersion, listPitchDocuments, listPitchImages, pitchDownloadLog, setCurrentVersion, viewVersion,
+  completeUpload, createUploadIntent, downloadVersion, listPitchDocuments, listPitchImages, pitchDownloadLog, setCurrentVersion, versionAccessLog, viewVersion,
 } from "@/server/modules/documents/service";
+import { registerCreator } from "@/server/modules/creator-portal/auth";
+import { completeCreatorUpload, createCreatorUploadIntent, getMyDownloadUrl, getMyViewUrl } from "@/server/modules/creator-portal/documents";
+import { submitCreatorPitch } from "@/server/modules/creator-portal/pitch";
 import { MemoryStorage } from "@/server/modules/storage/memory";
 import { performAction } from "@/server/modules/workflow/engine";
-import { closeDb, makePitch, makeTeam, testDb } from "../helpers/db";
+import { closeDb, COMPANY_A, makePitch, makePortalLink, makeTeam, testDb } from "../helpers/db";
 import { SAMPLE } from "../helpers/files";
 
 const db = testDb();
@@ -40,8 +43,10 @@ describe("script versioning", () => {
     const docs = await listPitchDocuments(db, team.employeeA.actor, pitchId);
     expect(docs).toHaveLength(1);
     expect(docs[0]!.versions.map((v) => [v.versionNo, v.isCurrent, v.scanStatus])).toEqual([[2, true, "NOT_SCANNED"], [1, false, "NOT_SCANNED"]]);
-    // storage keys are server-generated; the user's filename is display-only
-    const [row] = await db.select().from(documentVersions).where(eq(documentVersions.versionNo, 1));
+    // storage keys are server-generated; the user's filename is display-only. Scoped by this version's own
+    // id, not a bare versionNo=1 filter — the test DB is real Postgres and persists across runs, and other
+    // documents (including other tests' first versions) also have versionNo 1.
+    const [row] = await db.select().from(documentVersions).where(eq(documentVersions.id, (v1 as { versionId: string }).versionId));
     expect(row!.storageKey).toMatch(/^company\/aaaaaaaa-0000-4000-8000-00000000000a\/pitches\/[0-9a-f-]{36}\/documents\/[0-9a-f-]{36}\.pdf$/);
     expect(row!.sha256).toMatch(/^[0-9a-f]{64}$/);
     // the database refuses edits to a version row
@@ -126,5 +131,75 @@ describe("images", () => {
     const imgs = await listPitchImages(db, storage, team.employeeA.actor, pitchId);
     expect(imgs).toHaveLength(1);
     expect(imgs[0]!.url).toMatch(/^\/api\/v1\/dev-storage\/read\//);
+  });
+});
+
+// Regression for the "staff can't see what the pitch person uploaded" bug report: a document version
+// uploaded by a creator through the portal has uploadedById NULL (uploadedByCreatorId set instead —
+// document_versions_author_ck), which an innerJoin on `users` alone silently dropped from every staff-side
+// listing. That is exactly what the screenshots showed: a "Poster" document group with zero version rows
+// and no View/Download button.
+describe("documents uploaded by a creator via the portal", () => {
+  it("appears in listPitchDocuments (with a portal-attributed uploader name) and is downloadable by staff", async () => {
+    const token = await makePortalLink(COMPANY_A);
+    const creator = await registerCreator({
+      token, creatorType: "WRITER", fullName: "Portal Creator", email: `portal.creator.${Date.now()}@example.test`, password: "correct horse battery staple 9",
+    });
+    const { pitchId: creatorPitchId } = await submitCreatorPitch(creator.companyId, creator.creatorId, {
+      title: "Portal Pitch", formatKey: "FEATURE_FILM", languageKey: "TELUGU", genreKey: "THRILLER", episodeDurationMin: 100,
+    });
+    const bytes = Buffer.from("a poster file, uploaded by the pitch person", "utf-8");
+    const intent = await createCreatorUploadIntent(creator.companyId, creator.creatorId, storage, {
+      pitchId: creatorPitchId, categoryKey: "SCRIPT", title: "Poster", filename: "poster.txt", sizeBytes: bytes.length,
+    });
+    storage.acceptUpload(intent.uploadUrl.split("/").pop()!, bytes);
+    const uploaded = await completeCreatorUpload(creator.companyId, creator.creatorId, storage, intent.intentId);
+
+    const docs = await listPitchDocuments(db, team.senior.actor, creatorPitchId);
+    expect(docs).toHaveLength(1);
+    expect(docs[0]!.versions).toHaveLength(1);
+    const v = docs[0]!.versions[0]!;
+    expect(v.id).toBe(uploaded.versionId);
+    expect(v.uploadedByName).toBe("Portal Creator (creator, via portal)");
+
+    const url = await downloadVersion(db, storage, team.senior.actor, v.id, { ip: "10.3.3.3", userAgent: "vitest" });
+    expect(storage.read(url.split("/").pop()!)).toMatchObject({ name: "poster.txt" });
+    const log = await pitchDownloadLog(db, team.senior.actor, creatorPitchId);
+    expect(log[0]).toMatchObject({ userName: "Senior Employee", versionNo: 1, title: "Poster" });
+  });
+
+  it("also reflects the creator's own view/download of their upload, correctly attributed, in staff's access logs", async () => {
+    const token = await makePortalLink(COMPANY_A);
+    const creator = await registerCreator({
+      token, creatorType: "WRITER", fullName: "Self Viewing Creator", email: `self.viewing.${Date.now()}@example.test`, password: "correct horse battery staple 9",
+    });
+    const { pitchId: creatorPitchId } = await submitCreatorPitch(creator.companyId, creator.creatorId, {
+      title: "Self View Pitch", formatKey: "FEATURE_FILM", languageKey: "TELUGU", genreKey: "THRILLER", episodeDurationMin: 100,
+    });
+    const bytes = Buffer.from("synopsis text", "utf-8");
+    const intent = await createCreatorUploadIntent(creator.companyId, creator.creatorId, storage, {
+      pitchId: creatorPitchId, categoryKey: "SYNOPSIS", title: "Synopsis", filename: "synopsis.txt", sizeBytes: bytes.length,
+    });
+    storage.acceptUpload(intent.uploadUrl.split("/").pop()!, bytes);
+    const uploaded = await completeCreatorUpload(creator.companyId, creator.creatorId, storage, intent.intentId);
+
+    // The creator viewing/downloading their own upload — the missing feature half of the bug report ("Image
+    // i cant also see the option to view & Download what the pitch person uploaded" describes staff's view,
+    // but the creator had no view/download of their own uploads either).
+    const downloadUrl = await getMyDownloadUrl(creator.companyId, creator.creatorId, uploaded.versionId, storage);
+    expect(storage.read(downloadUrl.split("/").pop()!)).toMatchObject({ name: "synopsis.txt" });
+    const { url: viewUrl, mime, filename } = await getMyViewUrl(creator.companyId, creator.creatorId, uploaded.versionId, storage);
+    expect(mime).toBe("text/plain");
+    expect(filename).toBe("synopsis.txt");
+    expect(storage.read(viewUrl.split("/").pop()!)).toMatchObject({ inline: true });
+
+    // versionAccessLog/pitchDownloadLog had the same innerJoin-on-users bug for the actor side (userId vs.
+    // creatorId) — verify staff now see both the creator's DOWNLOAD and VIEW, correctly named.
+    const accessLog = await versionAccessLog(db, team.senior.actor, uploaded.versionId);
+    expect(accessLog.map((r) => [r.userName, r.action]).sort()).toEqual([
+      ["Self Viewing Creator (creator)", "DOWNLOAD"], ["Self Viewing Creator (creator)", "VIEW"],
+    ]);
+    const downloadLog = await pitchDownloadLog(db, team.senior.actor, creatorPitchId);
+    expect(downloadLog.some((r) => r.userName === "Self Viewing Creator (creator)" && r.action === "DOWNLOAD")).toBe(true);
   });
 });

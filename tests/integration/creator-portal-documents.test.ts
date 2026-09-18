@@ -1,9 +1,10 @@
 /** Creator portal document upload: quarantine-and-validate flow, rejected-pitch block, and cross-creator/company isolation. */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { randomUUID, createHash } from "node:crypto";
 import { eq } from "drizzle-orm";
-import { pitches } from "@/server/db/schema";
+import { documentVersions, pitches } from "@/server/db/schema";
 import { registerCreator } from "@/server/modules/creator-portal/auth";
-import { completeCreatorUpload, createCreatorUploadIntent, listMyPitchDocuments } from "@/server/modules/creator-portal/documents";
+import { completeCreatorUpload, createCreatorUploadIntent, getMyDownloadUrl, getMyViewUrl, listMyPitchDocuments } from "@/server/modules/creator-portal/documents";
 import { submitCreatorPitch } from "@/server/modules/creator-portal/pitch";
 import { MemoryStorage } from "@/server/modules/storage/memory";
 import { closeDb, COMPANY_A, COMPANY_B, makePortalLink, testDb } from "../helpers/db";
@@ -32,6 +33,24 @@ async function uploadTxt(companyId: string, creatorId: string, pitchId: string, 
   const token = intent.uploadUrl.split("/").pop()!;
   storage.acceptUpload(token, bytes);
   return completeCreatorUpload(companyId, creatorId, storage, intent.intentId);
+}
+
+/**
+ * document_versions_guard (0002_supabase_hardening.sql) only allows scan_status to change FROM 'PENDING',
+ * and completeCreatorUpload always inserts NOT_SCANNED — so an UPDATE can never get a version into
+ * PENDING/INFECTED/FAILED for a test. Insert the row directly instead (the guard trigger fires on
+ * UPDATE/DELETE only, never INSERT), on the same document an ordinary upload already created.
+ */
+let scanTestVersionNo = 900;
+async function insertVersionWithScanStatus(companyId: string, creatorId: string, documentId: string, scanStatus: "PENDING" | "INFECTED" | "FAILED") {
+  const bytes = Buffer.from("a version stuck in scanning", "utf-8");
+  const versionId = randomUUID();
+  await testDb(companyId).insert(documentVersions).values({
+    id: versionId, documentId, versionNo: scanTestVersionNo++, storageKey: `company/${companyId}/pitches/x/documents/${versionId}.txt`,
+    originalFilename: "blocked.txt", detectedMime: "text/plain", sizeBytes: bytes.length,
+    sha256: createHash("sha256").update(bytes).digest("hex"), scanStatus, uploadedByCreatorId: creatorId,
+  });
+  return versionId;
 }
 
 beforeAll(async () => {
@@ -146,5 +165,49 @@ describe("creator portal document upload", () => {
     expect(await errCode(createCreatorUploadIntent(creatorA1.companyId, creatorA1.creatorId, storage, {
       pitchId, categoryKey: "SCRIPT", filename: "draft.txt", sizeBytes: 5,
     }))).toBe("VALIDATION");
+  });
+});
+
+// getMyDownloadUrl/getMyViewUrl are new: a creator viewing/downloading their OWN upload. The RLS
+// (creator_own_document_versions) and the documentAccessLogs.creatorId column already existed for this;
+// only the application code was missing. Same IDOR/BOLA isolation the upload path already gets, verified
+// the same way as the tests above.
+describe("creator viewing/downloading their own uploaded document", () => {
+  it("returns a working signed URL for both view and download, and force-attaches (never inlines) the download", async () => {
+    const pitchId = await newPitch(creatorA1.companyId, creatorA1.creatorId);
+    const { versionId } = await uploadTxt(creatorA1.companyId, creatorA1.creatorId, pitchId, "my own screenplay draft");
+
+    const downloadUrl = await getMyDownloadUrl(creatorA1.companyId, creatorA1.creatorId, versionId, storage);
+    expect(storage.read(downloadUrl.split("/").pop()!)).toMatchObject({ name: "draft.txt" });
+    expect(storage.read(downloadUrl.split("/").pop()!)!.inline).toBeFalsy();
+
+    const { url: viewUrl, mime, filename } = await getMyViewUrl(creatorA1.companyId, creatorA1.creatorId, versionId, storage);
+    expect(mime).toBe("text/plain");
+    expect(filename).toBe("draft.txt");
+    expect(storage.read(viewUrl.split("/").pop()!)).toMatchObject({ name: "draft.txt", inline: true });
+  });
+
+  it("never lets a creator view or download a teammate's upload (IDOR)", async () => {
+    const pitchId = await newPitch(creatorA1.companyId, creatorA1.creatorId);
+    const { versionId } = await uploadTxt(creatorA1.companyId, creatorA1.creatorId, pitchId);
+    expect(await errCode(getMyDownloadUrl(creatorA2.companyId, creatorA2.creatorId, versionId, storage))).toBe("NOT_FOUND");
+    expect(await errCode(getMyViewUrl(creatorA2.companyId, creatorA2.creatorId, versionId, storage))).toBe("NOT_FOUND");
+  });
+
+  it("never lets a creator in a different company view or download another company's upload (IDOR)", async () => {
+    const pitchId = await newPitch(creatorA1.companyId, creatorA1.creatorId);
+    const { versionId } = await uploadTxt(creatorA1.companyId, creatorA1.creatorId, pitchId);
+    expect(await errCode(getMyDownloadUrl(creatorB1.companyId, creatorB1.creatorId, versionId, storage))).toBe("NOT_FOUND");
+    expect(await errCode(getMyViewUrl(creatorB1.companyId, creatorB1.creatorId, versionId, storage))).toBe("NOT_FOUND");
+  });
+
+  it("blocks view/download of a version that has not cleared its security scan", async () => {
+    const pitchId = await newPitch(creatorA1.companyId, creatorA1.creatorId);
+    const { documentId } = await uploadTxt(creatorA1.companyId, creatorA1.creatorId, pitchId);
+    const pendingId = await insertVersionWithScanStatus(creatorA1.companyId, creatorA1.creatorId, documentId, "PENDING");
+    expect(await errCode(getMyDownloadUrl(creatorA1.companyId, creatorA1.creatorId, pendingId, storage))).toBe("FORBIDDEN");
+    expect(await errCode(getMyViewUrl(creatorA1.companyId, creatorA1.creatorId, pendingId, storage))).toBe("FORBIDDEN");
+    const infectedId = await insertVersionWithScanStatus(creatorA1.companyId, creatorA1.creatorId, documentId, "INFECTED");
+    expect(await errCode(getMyDownloadUrl(creatorA1.companyId, creatorA1.creatorId, infectedId, storage))).toBe("FORBIDDEN");
   });
 });

@@ -191,13 +191,23 @@ export async function listPitchDocuments(db: Db, actor: Actor, pitchId: string) 
   await loadVisiblePitch(db, actor, pitchId, false);
   const docs = await db.select().from(documents).where(and(eq(documents.pitchId, pitchId), isNull(documents.archivedAt))).orderBy(asc(documents.categoryKey), asc(documents.createdAt));
   if (!docs.length) return [];
+  // A version's uploader is EITHER a staff user (uploadedById) OR a creator who uploaded it themselves
+  // through the portal (uploadedByCreatorId) — document_versions_author_ck enforces exactly one. This was
+  // an innerJoin on users alone, which silently dropped every portal-uploaded version from this list (the
+  // "Poster" row showed with no versions, no View/Download button) because uploadedById is NULL for those
+  // rows. Both joins are now left joins, and the name falls back to whichever side is actually set.
   const versions = await db.select({ id: documentVersions.id, documentId: documentVersions.documentId, versionNo: documentVersions.versionNo,
     originalFilename: documentVersions.originalFilename, detectedMime: documentVersions.detectedMime, sizeBytes: documentVersions.sizeBytes,
     sha256: documentVersions.sha256, scanStatus: documentVersions.scanStatus, versionLabel: documentVersions.versionLabel, notes: documentVersions.notes,
-    uploadedById: documentVersions.uploadedById, uploadedByName: users.fullName, createdAt: documentVersions.createdAt })
-    .from(documentVersions).innerJoin(users, eq(users.id, documentVersions.uploadedById))
+    uploadedById: documentVersions.uploadedById, uploadedByUserName: users.fullName, uploadedByCreatorName: creators.fullName, createdAt: documentVersions.createdAt })
+    .from(documentVersions)
+    .leftJoin(users, eq(users.id, documentVersions.uploadedById))
+    .leftJoin(creators, eq(creators.id, documentVersions.uploadedByCreatorId))
     .where(inArray(documentVersions.documentId, docs.map((d) => d.id))).orderBy(desc(documentVersions.versionNo));
-  return docs.map((d) => ({ ...d, versions: versions.filter((v) => v.documentId === d.id).map((v) => ({ ...v, isCurrent: v.id === d.currentVersionId })) }));
+  return docs.map((d) => ({ ...d, versions: versions.filter((v) => v.documentId === d.id).map((v) => {
+    const { uploadedByUserName, uploadedByCreatorName, ...rest } = v;
+    return { ...rest, uploadedByName: uploadedByUserName ?? `${uploadedByCreatorName} (creator, via portal)`, isCurrent: v.id === d.currentVersionId };
+  }) }));
 }
 
 /** Shared by downloadVersion/viewVersion: same permission, visibility, archive and scan-status checks either way. */
@@ -251,19 +261,28 @@ export async function versionAccessLog(db: Db, actor: Actor, versionId: string) 
   const [row] = await db.select({ pitchId: documents.pitchId }).from(documentVersions).innerJoin(documents, eq(documents.id, documentVersions.documentId)).where(eq(documentVersions.id, versionId));
   if (!row) throw notFound("Document");
   await loadVisiblePitch(db, actor, row.pitchId, false);
-  return db.select({ userName: users.fullName, action: documentAccessLogs.action, at: documentAccessLogs.createdAt })
-    .from(documentAccessLogs).innerJoin(users, eq(users.id, documentAccessLogs.userId))
+  // An access log row's actor is EITHER a staff user (userId) OR the creator viewing/downloading their own
+  // upload (creatorId) — document_access_logs_actor_ck enforces exactly one; see the same left-join fix
+  // (and its reasoning) in listPitchDocuments above, which this mirrors.
+  const rows = await db.select({ userName: users.fullName, creatorName: creators.fullName, action: documentAccessLogs.action, at: documentAccessLogs.createdAt })
+    .from(documentAccessLogs)
+    .leftJoin(users, eq(users.id, documentAccessLogs.userId))
+    .leftJoin(creators, eq(creators.id, documentAccessLogs.creatorId))
     .where(eq(documentAccessLogs.documentVersionId, versionId)).orderBy(desc(documentAccessLogs.createdAt)).limit(500);
+  return rows.map(({ userName, creatorName, ...r }) => ({ ...r, userName: userName ?? `${creatorName} (creator)` }));
 }
 
 export async function pitchDownloadLog(db: Db, actor: Actor, pitchId: string) {
   requirePermission(actor, "pitch.view_all");
   await loadVisiblePitch(db, actor, pitchId, false);
-  return db.select({ userName: users.fullName, versionNo: documentVersions.versionNo, title: documents.title, action: documentAccessLogs.action, at: documentAccessLogs.createdAt })
-    .from(documentAccessLogs).innerJoin(users, eq(users.id, documentAccessLogs.userId))
+  const rows = await db.select({ userName: users.fullName, creatorName: creators.fullName, versionNo: documentVersions.versionNo, title: documents.title, action: documentAccessLogs.action, at: documentAccessLogs.createdAt })
+    .from(documentAccessLogs)
+    .leftJoin(users, eq(users.id, documentAccessLogs.userId))
+    .leftJoin(creators, eq(creators.id, documentAccessLogs.creatorId))
     .innerJoin(documentVersions, eq(documentVersions.id, documentAccessLogs.documentVersionId))
     .innerJoin(documents, eq(documents.id, documentVersions.documentId))
     .where(eq(documentAccessLogs.pitchId, pitchId)).orderBy(desc(documentAccessLogs.createdAt)).limit(500);
+  return rows.map(({ userName, creatorName, ...r }) => ({ ...r, userName: userName ?? `${creatorName} (creator)` }));
 }
 
 export async function setCurrentVersion(db: Db, actor: Actor, documentId: string, versionId: string, ctx: RequestContext = {}) {

@@ -16,8 +16,6 @@ export function passwordPolicyErrors(password: string, context: { email?: string
   const errors: string[] = [];
   if (password.length < PASSWORD_MIN) errors.push(`Use at least ${PASSWORD_MIN} characters.`);
   if (password.length > PASSWORD_MAX) errors.push(`Use at most ${PASSWORD_MAX} characters.`);
-  const classes = [/[a-z]/, /[A-Z]/, /\d/, /[^A-Za-z0-9]/].filter((r) => r.test(password)).length;
-  if (password.length < 16 && classes < 3) errors.push("Mix upper-case, lower-case, numbers or symbols, or use 16+ characters.");
   const lower = password.toLowerCase();
   if (COMMON.has(lower)) errors.push("This password is too common.");
   const local = context.email?.split("@")[0]?.toLowerCase();

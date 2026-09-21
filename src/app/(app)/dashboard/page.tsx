@@ -7,16 +7,19 @@ import { getLookups, labelOf } from "@/server/modules/lookups/service";
 import { Funnel, GroupedMonthChart, HBarChart } from "@/components/charts";
 import { ACTION_LABEL } from "@/components/labels";
 import { Empty, fmtDate, PageHeader, StageBadge, Stat } from "@/components/ui";
+import { HeroBanner } from "@/components/hero-banner";
+import { companyBranding } from "@/server/modules/tenancy/company";
 
 export default async function DashboardPage() {
   const { actor } = await requirePageSession();
   const db = getDb(actor);
   const management = can(actor, "pitch.view_all") || can(actor, "analytics.view");
-  const [s, f, me, lookups] = await Promise.all([dashboardSummary(db, actor), funnel(db, actor), myWork(db, actor), getLookups(db)]);
+  const [s, f, me, lookups, brand] = await Promise.all([dashboardSummary(db, actor), funnel(db, actor), myWork(db, actor), getLookups(db), companyBranding(db)]);
   const [b, t, aging] = management ? await Promise.all([breakdowns(db, actor), timeMetrics(db, actor), agingPitches(db, actor)]) : [null, null, null];
 
   return (
     <>
+      <HeroBanner name={brand?.name ?? "This studio"} total={s.total} inReview={s.underReview} inProduction={s.inProduction} />
       <PageHeader title="Dashboard" subtitle={management ? "The whole story pipeline you are cleared to see." : "Your stories and what needs your attention."} />
       <div className="cards">
         <Stat label="Total pitches" value={s.total} />

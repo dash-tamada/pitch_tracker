@@ -36,7 +36,7 @@ export function SetPasswordForm({ endpoint = "/api/v1/auth/password/reset", head
     <form onSubmit={submit}>
       <h1>{heading}</h1>
       {error && <p className="error" role="alert">{error}</p>}
-      <p className="subtle">At least 6 characters. Mix upper and lower case, numbers or symbols — or use 16+ characters.</p>
+      <p className="subtle">At least 6 characters. Longer is stronger — a short phrase you will remember beats a short scramble.</p>
       <label className="field">New password<input name="password" type="password" autoComplete="new-password" required minLength={6} maxLength={128} /></label>
       <label className="field">Confirm password<input name="confirm" type="password" autoComplete="new-password" required /></label>
       <button className="btn">Set password</button>
@@ -55,8 +55,10 @@ export function ForgotPasswordForm() {
   );
 }
 
-/** Voluntary password change for an already signed-in, MFA-set-up account: current password + new password + a fresh authenticator code. */
-export function ChangePasswordForm() {
+/** Voluntary password change: current password + new password, plus a fresh authenticator code when a
+ *  second factor is in force. `mfaOn` comes from the server so the code field is not demanded while MFA
+ *  is switched off locally (see src/server/modules/auth/mfa-switch.ts). */
+export function ChangePasswordForm({ mfaOn = true }: { mfaOn?: boolean }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
@@ -68,7 +70,8 @@ export function ChangePasswordForm() {
     setBusy(true);
     try {
       await api("POST", "/api/v1/auth/password/change", {
-        currentPassword: f.get("currentPassword"), newPassword: f.get("newPassword"), code: f.get("code"),
+        currentPassword: f.get("currentPassword"), newPassword: f.get("newPassword"),
+        ...(mfaOn ? { code: f.get("code") } : {}),
       });
       setDone(true);
     } catch (err) { setError(err instanceof Error ? err.message : "Failed"); } finally { setBusy(false); }
@@ -79,11 +82,11 @@ export function ChangePasswordForm() {
       <h1>Change password</h1>
       {error && <p className="error" role="alert">{error}</p>}
       <label className="field">Current password<input name="currentPassword" type="password" autoComplete="current-password" required maxLength={128} /></label>
-      <p className="subtle">At least 6 characters. Mix upper and lower case, numbers or symbols — or use 16+ characters.</p>
+      <p className="subtle">At least 6 characters. Longer is stronger — a short phrase you will remember beats a short scramble.</p>
       <label className="field">New password<input name="newPassword" type="password" autoComplete="new-password" required minLength={6} maxLength={128} /></label>
       <label className="field">Confirm new password<input name="confirm" type="password" autoComplete="new-password" required /></label>
-      <label className="field">6-digit code from your authenticator app
-        <input name="code" inputMode="numeric" pattern="\d{6}" maxLength={6} required autoComplete="one-time-code" /></label>
+      {mfaOn && <label className="field">6-digit code from your authenticator app
+        <input name="code" inputMode="numeric" pattern="\d{6}" maxLength={6} required autoComplete="one-time-code" /></label>}
       <button className="btn" disabled={busy}>{busy ? "Please wait…" : "Change password"}</button>
     </form>
   );

@@ -6,6 +6,7 @@ import { AppError } from "@/server/lib/errors";
 import { writeAudit, type RequestContext } from "@/server/modules/audit/service";
 import { loadActor } from "@/server/modules/authz/actor";
 import { MFA_REQUIRED_ROLES, type RoleKey } from "@/server/modules/authz/permissions";
+import { mfaDisabled } from "./mfa-switch";
 import type { Actor } from "@/server/modules/authz/policy";
 import { parseInput } from "@/server/lib/validation";
 import { getDummyHash, hashPassword, passwordPolicyErrors, verifyPassword } from "./password";
@@ -92,8 +93,10 @@ export async function login(db: Db, raw: unknown, ctx: RequestContext = {}, now 
   }
 
   const actor = await loadActor(db, user.id, false);
-  // Platform accounts and privileged company roles must always use MFA.
-  const mfaRequired = user.mfaEnabled || user.scope === "PLATFORM" || [...(actor?.roles ?? [])].some((r) => MFA_REQUIRED_ROLES.has(r as RoleKey));
+  // Platform accounts and privileged company roles must always use MFA — unless the local
+  // MFA_DISABLED switch is on, which mfaDisabled() refuses to honour in production/staging.
+  const mfaRequired = !mfaDisabled()
+    && (user.mfaEnabled || user.scope === "PLATFORM" || [...(actor?.roles ?? [])].some((r) => MFA_REQUIRED_ROLES.has(r as RoleKey)));
 
   const token = newToken();
   const expiresAt = new Date(now.getTime() + SESSION_ABSOLUTE_MS);
@@ -152,7 +155,9 @@ export async function completeRequiredPasswordChange(db: Db, actor: Actor, raw: 
 const changePasswordSchema = z.object({
   currentPassword: z.string().min(1).max(128),
   newPassword: z.string().min(1).max(128),
-  code: z.string().regex(/^\d{6}$/, "Enter the 6-digit code."),
+  // Optional at the schema level so the form still works with MFA switched off; when a second
+  // factor IS in force, changeOwnPassword below rejects a missing or malformed code.
+  code: z.string().optional(),
 }).strict();
 
 /**
@@ -173,9 +178,16 @@ export async function changeOwnPassword(db: Db, actor: Actor, sessionId: string,
     const currentOk = await verifyPassword(u.passwordHash, currentPassword);
     if (!currentOk) throw new AppError("INVALID_CREDENTIALS", "Current password is incorrect.", { currentPassword: "Incorrect" });
 
-    if (!u.mfaEnabled || !u.mfaSecretEnc) throw new AppError("MFA_REQUIRED", "Set up two-factor authentication before changing your password.");
-    const step = verifyTotp(decryptSecret(u.mfaSecretEnc), code, now.getTime(), u.mfaLastStep);
-    if (step === null) throw new AppError("VALIDATION", "That authenticator code is not valid.", { code: "Invalid" });
+    // Step-up check. With MFA switched off there is no second factor to re-prove, so the current
+    // password alone authorises the change and the stored last-used step is left untouched.
+    let step = u.mfaLastStep;
+    if (!mfaDisabled()) {
+      if (!u.mfaEnabled || !u.mfaSecretEnc) throw new AppError("MFA_REQUIRED", "Set up two-factor authentication before changing your password.");
+      if (!code || !/^\d{6}$/.test(code)) throw new AppError("VALIDATION", "Enter the 6-digit code.", { code: "Required" });
+      const verified = verifyTotp(decryptSecret(u.mfaSecretEnc), code, now.getTime(), u.mfaLastStep);
+      if (verified === null) throw new AppError("VALIDATION", "That authenticator code is not valid.", { code: "Invalid" });
+      step = verified;
+    }
 
     const errors = passwordPolicyErrors(newPassword, { email: u.email, fullName: u.fullName });
     if (errors.length) throw new AppError("VALIDATION", errors.join(" "), { newPassword: errors[0]! });

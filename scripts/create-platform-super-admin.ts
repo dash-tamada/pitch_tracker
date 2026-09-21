@@ -10,12 +10,11 @@ import { config } from "dotenv";
 import { eq } from "drizzle-orm";
 import { createDb } from "../src/server/db/client";
 import { sessions, users } from "../src/server/db/schema";
-import { hashPassword, passwordPolicyErrors } from "../src/server/modules/auth/password";
+import { hashPassword, PASSWORD_MIN, passwordPolicyErrors } from "../src/server/modules/auth/password";
 import { writeAudit } from "../src/server/modules/audit/service";
 import { ask } from "./lib/prompt";
 
 config({ path: ".env.local", quiet: true });
-const PLATFORM_MIN_LENGTH = 16;
 
 async function main() {
   const [rawEmail, fullNameArg] = process.argv.slice(2);
@@ -26,9 +25,8 @@ async function main() {
 
   let password = "";
   for (;;) {
-    password = await ask("ADMIN_PASSWORD", `Password (hidden, at least ${PLATFORM_MIN_LENGTH} characters): `, { hidden: true });
+    password = await ask("ADMIN_PASSWORD", `Password (hidden, at least ${PASSWORD_MIN} characters): `, { hidden: true });
     const errors = passwordPolicyErrors(password, { email, fullName });
-    if (password.length < PLATFORM_MIN_LENGTH) errors.unshift(`Platform accounts need at least ${PLATFORM_MIN_LENGTH} characters.`);
     if (!errors.length) break;
     console.log(`  Not accepted: ${errors.join(" ")}`);
     if (process.env.SETUP_ADMIN_PASSWORD !== undefined) throw new Error("Password rejected.");

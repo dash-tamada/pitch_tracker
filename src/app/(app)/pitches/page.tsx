@@ -10,6 +10,7 @@ import { KanbanBoard } from "@/components/kanban";
 import { PLATFORM_STATUS_LABEL, typeLabel } from "@/components/labels";
 import { DeleteFilter, SaveFilter } from "@/components/saved-filters";
 import { Empty, fmtDate, PageHeader, StageBadge, Stars } from "@/components/ui";
+import { PitchPoster } from "@/components/pitch-poster";
 
 const FILTER_KEYS = ["q", "stage", "genre", "language", "format", "priority", "creatorType", "ownerId", "mine", "platformId", "platformStatus", "createdFrom", "createdTo", "minDaysWaiting", "minRating", "archived", "sort"] as const;
 
@@ -109,22 +110,15 @@ export default async function PitchesPage({ searchParams }: { searchParams: Prom
         </table></div>
       )}
       {page && page.items.length > 0 && view === "cards" && (
-        <div className="pitch-cards">{page.items.map((p) => (
-          <Link key={p.id} className="pitch-card" href={`/pitches/${p.id}`}>
-            <h3>{p.title}</h3>
-            <StageBadge badge={p.stageBadge} label={p.stageName ?? p.currentStageKey} />
-            <dl>
-              <dt>{typeLabel(p.creatorType)}</dt><dd>{p.creatorName}</dd>
-              <dt>Genre</dt><dd>{labelOf(lookups, "GENRE", p.genreKey)}</dd>
-              <dt>Format</dt><dd>{labelOf(lookups, "FORMAT", p.formatKey)}</dd>
-              <dt>Language</dt><dd>{labelOf(lookups, "LANGUAGE", p.languageKey)}</dd>
-              <dt>Current level</dt><dd>{p.stageName}</dd>
-              <dt>With</dt><dd>{p.ownerName ?? "—"}</dd>
-              <dt>Rating</dt><dd><Stars value={p.avgRating} /></dd>
-              <dt>Waiting</dt><dd>{p.daysWaiting} days</dd>
-              <dt>Updated</dt><dd>{fmtDate(p.updatedAt)}</dd>
-            </dl>
-          </Link>
+        <div className="poster-grid">{page.items.map((p) => (
+          <PitchPoster key={p.id} p={{
+            id: p.id, title: p.title, pitchCode: p.pitchCode, creatorName: p.creatorName,
+            creatorRole: typeLabel(p.creatorType), stageBadge: p.stageBadge,
+            stageLabel: p.stageName ?? p.currentStageKey, genre: labelOf(lookups, "GENRE", p.genreKey),
+            format: labelOf(lookups, "FORMAT", p.formatKey), language: labelOf(lookups, "LANGUAGE", p.languageKey),
+            ownerName: p.ownerName, avgRating: p.avgRating, daysWaiting: p.daysWaiting,
+            updatedAt: p.updatedAt, priority: p.priority,
+          }} />
         ))}</div>
       )}
       {page && view === "kanban" && (

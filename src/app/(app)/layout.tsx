@@ -12,7 +12,7 @@ const NAV: { href: string; label: string; anyOf: Permission[] }[] = [
   { href: "/dashboard", label: "Dashboard", anyOf: ["pitch.view", "pitch.view_all", "analytics.view"] },
   { href: "/pitches", label: "Pitches", anyOf: ["pitch.view", "pitch.view_all"] },
   { href: "/reviews", label: "My Reviews", anyOf: ["pitch.accept", "pitch.approve_executive"] },
-  { href: "/management", label: "CEO / COO Desk", anyOf: ["pitch.approve_executive"] },
+  { href: "/management", label: "Management Desk", anyOf: ["pitch.view_all"] },
   { href: "/creators", label: "Creators", anyOf: ["creator.view"] },
   { href: "/platforms", label: "Platforms", anyOf: ["platform.view"] },
   { href: "/development", label: "Development", anyOf: ["development.manage"] },

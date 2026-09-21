@@ -39,7 +39,6 @@ export const DEFAULT_STAGES: StageDef[] = [
   { key: "INITIAL_REVIEW", name: "Initial Review", category: "REVIEW", badge: "under_review" },
   { key: "INTERNAL_REVIEW", name: "Internal Review", category: "REVIEW", badge: "under_review" },
   { key: "SENIOR_REVIEW", name: "Senior Review", category: "REVIEW", badge: "under_review" },
-  { key: "EXECUTIVE_REVIEW", name: "CEO / COO Review", category: "EXECUTIVE", badge: "awaiting_approval" },
   { key: "CHANGES_REQUESTED", name: "Changes Requested", category: "PAUSED", badge: "changes_requested" },
   { key: "ON_HOLD", name: "On Hold", category: "PAUSED", badge: "on_hold" },
   { key: "REJECTED", name: "Rejected", category: "TERMINAL", badge: "rejected", isTerminal: true, requiresOwner: false },
@@ -61,36 +60,36 @@ const EXEC: RoleKey[] = ["CEO", "COO", "COMPANY_ADMIN"];
 const SENIOR_UP: RoleKey[] = ["SENIOR_EMPLOYEE", "CEO", "COO", "COMPANY_ADMIN"];
 const REVIEWERS: RoleKey[] = ["EMPLOYEE", "SENIOR_EMPLOYEE", "CEO", "COO", "COMPANY_ADMIN"];
 
-const LEVEL_ORDER = ["INITIAL_REVIEW", "INTERNAL_REVIEW", "SENIOR_REVIEW", "EXECUTIVE_REVIEW"] as const;
+const LEVEL_ORDER = ["INITIAL_REVIEW", "INTERNAL_REVIEW", "SENIOR_REVIEW"] as const;
 const RECIPIENTS_FOR: Record<(typeof LEVEL_ORDER)[number], RoleKey[]> = {
   INITIAL_REVIEW: REVIEWERS,
   INTERNAL_REVIEW: REVIEWERS,
   SENIOR_REVIEW: SENIOR_UP,
-  EXECUTIVE_REVIEW: ["CEO", "COO"],
 };
 
 function reviewTransitions(): TransitionDef[] {
   const out: TransitionDef[] = [];
   LEVEL_ORDER.forEach((stage, i) => {
-    const isExec = stage === "EXECUTIVE_REVIEW";
-    const ownerRule = isExec ? { roles: EXEC, requiresCurrentOwner: false } : {};
-
-    if (!isExec) {
-      // FORWARD: same level or any higher level (Employee → Senior / CEO / COO)
-      for (const target of LEVEL_ORDER.slice(i)) {
-        out.push({ from: stage, to: target, action: "FORWARD", permission: "pitch.forward",
-          requiresRemarks: true, requiresRecipient: true, recipientRoles: RECIPIENTS_FOR[target] });
-      }
-      // ACCEPT: recommend and pass to the next level
-      const next = LEVEL_ORDER[i + 1]!;
+    // FORWARD: same level or any higher review level (Employee → Senior)
+    for (const target of LEVEL_ORDER.slice(i)) {
+      out.push({ from: stage, to: target, action: "FORWARD", permission: "pitch.forward",
+        requiresRemarks: true, requiresRecipient: true, recipientRoles: RECIPIENTS_FOR[target] });
+    }
+    const next = LEVEL_ORDER[i + 1];
+    if (next) {
+      // ACCEPT: recommend and pass to the next review level
       out.push({ from: stage, to: next, action: "ACCEPT", permission: "pitch.accept",
         requiresRemarks: true, requiresRecipient: true, recipientRoles: RECIPIENTS_FOR[next] });
+    } else {
+      // Senior Review is the last level: accepting clears the story for platform pitching outright.
+      out.push({ from: stage, to: "APPROVED_FOR_PLATFORM", action: "ACCEPT", permission: "pitch.accept",
+        roles: SENIOR_UP, requiresRemarks: true, requiresRecipient: true, isApproval: true });
     }
     out.push({ from: stage, to: "REJECTED", action: "REJECT", permission: "pitch.reject",
-      requiresRemarks: false, requiresRejectionReason: true, ...ownerRule });
+      requiresRemarks: false, requiresRejectionReason: true });
     out.push({ from: stage, to: "CHANGES_REQUESTED", action: "REQUEST_CHANGES", permission: "pitch.request_changes",
-      requiresRemarks: true, requiresChangeTypes: true, ...ownerRule });
-    out.push({ from: stage, to: "ON_HOLD", action: "HOLD", permission: "pitch.hold", requiresRemarks: true, ...ownerRule });
+      requiresRemarks: true, requiresChangeTypes: true });
+    out.push({ from: stage, to: "ON_HOLD", action: "HOLD", permission: "pitch.hold", requiresRemarks: true });
   });
   return out;
 }
@@ -104,13 +103,10 @@ export const DEFAULT_TRANSITIONS: TransitionDef[] = [
   { from: "CHANGES_REQUESTED", to: null, action: "RESUME", permission: "pitch.request_changes", requiresRemarks: true },
   { from: "ON_HOLD", to: null, action: "RESUME", permission: "pitch.hold", requiresRemarks: true },
 
-  // CEO / COO decisions
-  { from: "EXECUTIVE_REVIEW", to: "APPROVED_FOR_PLATFORM", action: "SEND_TO_PLATFORM", permission: "pitch.send_to_platform",
-    roles: EXEC, requiresCurrentOwner: false, requiresRemarks: true, requiresRecipient: true, isApproval: true },
-  { from: "EXECUTIVE_REVIEW", to: "APPROVED_FOR_PLATFORM", action: "APPROVE", permission: "pitch.approve_executive",
-    roles: EXEC, requiresCurrentOwner: false, requiresRemarks: true, requiresRecipient: true, isApproval: true },
-  { from: "EXECUTIVE_REVIEW", to: "SENIOR_REVIEW", action: "SEND_BACK", permission: "pitch.approve_executive",
-    roles: EXEC, requiresCurrentOwner: false, requiresRemarks: true, requiresRecipient: true, recipientRoles: SENIOR_UP },
+  // Clearing a story for platform pitching. ACCEPT (above) does this as part of the review ladder;
+  // this is the explicit action for whoever holds pitch.send_to_platform.
+  { from: "SENIOR_REVIEW", to: "APPROVED_FOR_PLATFORM", action: "SEND_TO_PLATFORM", permission: "pitch.send_to_platform",
+    roles: SENIOR_UP, requiresCurrentOwner: false, requiresRemarks: true, requiresRecipient: true, isApproval: true },
 
   // Platform stage
   { from: "APPROVED_FOR_PLATFORM", to: "PLATFORM_PITCHING", action: "RECORD_PLATFORM_PITCH", permission: "platform.pitch",
@@ -132,8 +128,6 @@ export const DEFAULT_TRANSITIONS: TransitionDef[] = [
       roles: SENIOR_UP, requiresCurrentOwner: false, requiresRecipient: true, requiresRemarks: true })),
   ...REVIEW_STAGES.map<TransitionDef>((s) => ({ from: s, to: s, action: "ASSIGN", permission: "pitch.forward",
       roles: SENIOR_UP, requiresCurrentOwner: false, requiresRecipient: true, requiresRemarks: true })),
-  { from: "EXECUTIVE_REVIEW", to: "EXECUTIVE_REVIEW", action: "ASSIGN", permission: "pitch.forward",
-      roles: EXEC, requiresCurrentOwner: false, requiresRecipient: true, recipientRoles: ["CEO", "COO"], requiresRemarks: true },
 
   // Development & production
   { from: "READY_FOR_DEVELOPMENT", to: "DEVELOPMENT", action: "START_DEVELOPMENT", permission: "development.manage",

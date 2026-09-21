@@ -117,15 +117,17 @@ export async function performAction(db: DbOrTx, actor: Actor, pitchId: string, r
 
       let outcome = resolveOutcome(rule, pitch, input, stages);
       let metadata: Record<string, unknown> = {};
-      // Executive approval mode ALL: both CEO and COO must approve. The first approval is recorded but the pitch stays
-      // in executive review until an approver holding the other executive role approves.
-      if (rule.isApproval && rule.fromStageKey === "EXECUTIVE_REVIEW" && settings.executive_approval_mode === "ALL") {
+      // Executive approval mode ALL: both CEO and COO must greenlight. The first approval is recorded but the pitch
+      // stays where it is until an approver holding the other executive role approves.
+      // (This used to guard the CEO/COO review stage, which no longer exists; the greenlight into production is now
+      // the only executive approval left, so it is the one the setting applies to.)
+      if (rule.action === "GREENLIGHT" && rule.isApproval && settings.executive_approval_mode === "ALL") {
         const actorExecRoles = ["CEO", "COO"].filter((r) => actor.roles.has(r));
         const [entered] = await tx.select({ seq: workflowEvents.seq }).from(workflowEvents)
-          .where(and(eq(workflowEvents.pitchId, pitch.id), eq(workflowEvents.toStageKey, "EXECUTIVE_REVIEW"), sql`${workflowEvents.fromStageKey} IS DISTINCT FROM 'EXECUTIVE_REVIEW'`))
+          .where(and(eq(workflowEvents.pitchId, pitch.id), eq(workflowEvents.toStageKey, rule.fromStageKey), sql`${workflowEvents.fromStageKey} IS DISTINCT FROM ${rule.fromStageKey}`))
           .orderBy(sql`${workflowEvents.seq} DESC`).limit(1);
         const priorApprovals = await tx.select({ approvalType: workflowEvents.approvalType, actorId: workflowEvents.actorId }).from(workflowEvents)
-          .where(and(eq(workflowEvents.pitchId, pitch.id), inArray(workflowEvents.action, ["APPROVE", "SEND_TO_PLATFORM"]), sql`${workflowEvents.seq} > ${entered?.seq ?? 0}`));
+          .where(and(eq(workflowEvents.pitchId, pitch.id), eq(workflowEvents.action, "GREENLIGHT"), sql`${workflowEvents.seq} > ${entered?.seq ?? 0}`));
         const covered = new Set([...priorApprovals.filter((a) => a.actorId !== actor.userId).map((a) => a.approvalType), ...actorExecRoles]);
         if (!(covered.has("CEO") && covered.has("COO"))) {
           outcome = { toStageKey: pitch.currentStageKey, toOwnerId: pitch.currentOwnerId, pausedFromStageKey: pitch.pausedFromStageKey, stageChanged: false };

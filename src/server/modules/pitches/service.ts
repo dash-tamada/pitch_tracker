@@ -252,7 +252,7 @@ export async function listPitches(db: Db, actor: Actor, raw: unknown, now = new 
 /** "What happens next" wording per stage key (default workflow). Unknown stages fall back to the stage name. */
 const NEXT_ACTION: Record<string, string> = {
   SUBMITTED: "Assign to a reviewer", INITIAL_REVIEW: "Reviewer decision", INTERNAL_REVIEW: "Reviewer decision", SENIOR_REVIEW: "Senior review decision",
-  EXECUTIVE_REVIEW: "CEO / COO decision", CHANGES_REQUESTED: "Upload revised material, then resume", ON_HOLD: "Resume when ready",
+  CHANGES_REQUESTED: "Upload revised material, then resume", ON_HOLD: "Resume when ready",
   REJECTED: "None (can be reopened by management)", APPROVED_FOR_PLATFORM: "Pitch to a platform", PLATFORM_PITCHING: "Await platform response",
   PLATFORM_APPROVED: "Confirm ready for development", READY_FOR_DEVELOPMENT: "Development team to start", DEVELOPMENT: "Greenlight decision (CEO / COO)",
   GREENLIT: "Begin pre-production", PRE_PRODUCTION: "Begin production", PRODUCTION: "Move to post-production", POST_PRODUCTION: "Complete",

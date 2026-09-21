@@ -33,7 +33,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       <ActionForm endpoint="/api/v1/admin/settings" method="PATCH" title="Policies" submitLabel="Save settings"
         description="Relaxing approval rules requires a Company Admin."
         fields={[
-          { name: "executive_approval_mode", label: "CEO / COO approval", type: "select", defaultValue: s.executive_approval_mode, options: [{ value: "ANY", label: "Either CEO or COO" }, { value: "ALL", label: "Both CEO and COO" }] },
+          { name: "executive_approval_mode", label: "Greenlight into production needs", type: "select", defaultValue: s.executive_approval_mode, options: [{ value: "ANY", label: "Either CEO or COO" }, { value: "ALL", label: "Both CEO and COO" }] },
           { name: "allow_self_approval", label: "Allow people to approve pitches they submitted", type: "checkbox", defaultValue: s.allow_self_approval },
           { name: "ratings_visibility", label: "Who can see rating history", type: "select", defaultValue: s.ratings_visibility, options: [{ value: "MANAGEMENT", label: "Management only" }, { value: "ALL_EMPLOYEES", label: "All reviewers" }] },
           { name: "aging_thresholds_days.attention", label: "Aging: attention after (days)", type: "number", min: 1, defaultValue: s.aging_thresholds_days.attention },

@@ -26,8 +26,6 @@ export default async function DashboardPage() {
         <Stat label="New (this month)" value={s.newThisMonth} />
         <Stat label="Under review" value={s.underReview} />
         <Stat label="Awaiting my review" value={<Link href="/reviews">{s.awaitingMyReview}</Link>} />
-        <Stat label="Awaiting CEO approval" value={s.awaitingCeo} />
-        <Stat label="Awaiting COO approval" value={s.awaitingCoo} />
         <Stat label="Accepted" value={s.accepted} hint="Recommended by a reviewer at least once" />
         <Stat label="Rejected" value={s.rejected} />
         <Stat label="Sent to platforms" value={s.sentToPlatforms} />

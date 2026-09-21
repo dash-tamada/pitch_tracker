@@ -25,8 +25,8 @@ export default async function ManagementPage() {
   const v = await executiveView(getDb(actor), actor);
   return (
     <>
-      <PageHeader title="CEO / COO Desk" subtitle="Decisions waiting, strongest stories, platform responses and the pipeline after approval." />
-      <section className="section"><h2>Pending approvals ({v.pendingApprovals.length})</h2><Rows rows={v.pendingApprovals} /></section>
+      <PageHeader title="Management Desk" subtitle="Decisions waiting, strongest stories, platform responses and the pipeline after approval." />
+      <section className="section"><h2>Waiting for final sign-off ({v.pendingApprovals.length})</h2><Rows rows={v.pendingApprovals} /></section>
       <div className="grid-2">
         <section className="section"><h2>Recommended by reviewers</h2><Rows rows={v.recommended} /></section>
         <section className="section"><h2>High priority</h2><Rows rows={v.highPriority} tab="overview" /></section>

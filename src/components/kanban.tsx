@@ -9,7 +9,6 @@ export const KANBAN_COLUMNS: { key: string; label: string; stages: string[] }[] 
   { key: "initial", label: "Initial Review", stages: ["INITIAL_REVIEW"] },
   { key: "internal", label: "Internal Review", stages: ["INTERNAL_REVIEW", "CHANGES_REQUESTED", "ON_HOLD"] },
   { key: "senior", label: "Senior Review", stages: ["SENIOR_REVIEW"] },
-  { key: "exec", label: "CEO / COO", stages: ["EXECUTIVE_REVIEW"] },
   { key: "platform", label: "Platform", stages: ["APPROVED_FOR_PLATFORM", "PLATFORM_PITCHING"] },
   { key: "approved", label: "Approved", stages: ["PLATFORM_APPROVED", "READY_FOR_DEVELOPMENT"] },
   { key: "development", label: "Development", stages: ["DEVELOPMENT"] },

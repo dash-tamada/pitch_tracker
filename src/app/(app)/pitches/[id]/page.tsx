@@ -198,7 +198,10 @@ async function WorkflowTab({ actor, pitchId, version, lookups, suggest, to }: { 
     getPlatformOptions(db), getRatingCategories(db), getActiveStages(db)]);
   const generic = actions.filter((a) => !TRACKER_ACTIONS.has(a.action));
   const tracker = actions.filter((a) => TRACKER_ACTIONS.has(a.action));
-  const stageName = (k: string | null) => stages.find((x) => x.key === k)?.name ?? k ?? "previous stage";
+  // History can reference a stage that has since been retired from the workflow (it lives on in an
+  // older definition version), so fall back to a readable form of the key rather than showing SHOUTY_SNAKE.
+  const prettyKey = (k: string) => k.toLowerCase().replaceAll("_", " ").replace(/^./, (c) => c.toUpperCase());
+  const stageName = (k: string | null) => stages.find((x) => x.key === k)?.name ?? (k ? prettyKey(k) : "previous stage");
   const ordered = suggest ? [...generic].sort((a, b) => Number(b.action === suggest && b.toStageKey === to) - Number(a.action === suggest && a.toStageKey === to)) : generic;
   return (
     <div className="grid-2">

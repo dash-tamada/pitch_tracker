@@ -26,9 +26,7 @@ export async function dashboardSummary(db: Db, actor: Actor, now = new Date()) {
     newThisMonth: sql<number>`count(*) FILTER (WHERE "pitches"."created_at" >= ${monthStart})::int`,
     newPitches: now_(["SUBMITTED"]),
     underReview: now_([...REVIEW_STAGES, "CHANGES_REQUESTED", "ON_HOLD"]),
-    awaitingMyReview: sql<number>`count(*) FILTER (WHERE "pitches"."current_owner_id" = ${actor.userId} AND "pitches"."current_stage_key" IN (${inList(["SUBMITTED", ...REVIEW_STAGES, "EXECUTIVE_REVIEW", "CHANGES_REQUESTED"])}))::int`,
-    awaitingCeo: sql<number>`count(*) FILTER (WHERE "pitches"."current_stage_key" = 'EXECUTIVE_REVIEW' AND EXISTS (SELECT 1 FROM user_roles ur JOIN roles r ON r.id = ur.role_id WHERE ur.user_id = "pitches"."current_owner_id" AND r.key = 'CEO'))::int`,
-    awaitingCoo: sql<number>`count(*) FILTER (WHERE "pitches"."current_stage_key" = 'EXECUTIVE_REVIEW' AND EXISTS (SELECT 1 FROM user_roles ur JOIN roles r ON r.id = ur.role_id WHERE ur.user_id = "pitches"."current_owner_id" AND r.key = 'COO'))::int`,
+    awaitingMyReview: sql<number>`count(*) FILTER (WHERE "pitches"."current_owner_id" = ${actor.userId} AND "pitches"."current_stage_key" IN (${inList(["SUBMITTED", ...REVIEW_STAGES, "CHANGES_REQUESTED"])}))::int`,
     accepted: didAction(["ACCEPT"]),
     approvedByExecutive: everReached(["APPROVED_FOR_PLATFORM"]),
     rejected: now_(["REJECTED"]),
@@ -50,7 +48,6 @@ export async function funnel(db: Db, actor: Actor) {
     milestone("Submitted", sql`true`),
     milestone("Reviewed", sql`EXISTS (SELECT 1 FROM workflow_events we WHERE we.pitch_id = "pitches"."id" AND we.action::text IN ('ACCEPT','FORWARD','REJECT','REQUEST_CHANGES','HOLD'))`),
     milestone("Accepted", sql`EXISTS (SELECT 1 FROM workflow_events we WHERE we.pitch_id = "pitches"."id" AND we.action::text = 'ACCEPT')`),
-    milestone("CEO/COO", sql`EXISTS (SELECT 1 FROM workflow_events we WHERE we.pitch_id = "pitches"."id" AND we.to_stage_key = 'EXECUTIVE_REVIEW')`),
     milestone("Platform", sql`EXISTS (SELECT 1 FROM workflow_events we WHERE we.pitch_id = "pitches"."id" AND we.action::text = 'RECORD_PLATFORM_PITCH')`),
     milestone("Platform approved", sql`EXISTS (SELECT 1 FROM workflow_events we WHERE we.pitch_id = "pitches"."id" AND we.action::text = 'MARK_PLATFORM_APPROVED')`),
     milestone("Development", sql`EXISTS (SELECT 1 FROM workflow_events we WHERE we.pitch_id = "pitches"."id" AND we.to_stage_key = 'DEVELOPMENT')`),
@@ -115,7 +112,7 @@ export async function timeMetrics(db: Db, actor: Actor) {
       SELECT round(avg(EXTRACT(EPOCH FROM (nxt.created_at - cur.created_at)) / 86400)::numeric, 1)
       FROM workflow_events cur
       JOIN LATERAL (SELECT created_at FROM workflow_events n WHERE n.pitch_id = cur.pitch_id AND n.seq > cur.seq ORDER BY n.seq LIMIT 1) nxt ON true
-      WHERE cur.to_stage_key IN ('INITIAL_REVIEW','INTERNAL_REVIEW','SENIOR_REVIEW','EXECUTIVE_REVIEW') AND cur.pitch_id IN ${vis})`,
+      WHERE cur.to_stage_key IN ('INITIAL_REVIEW','INTERNAL_REVIEW','SENIOR_REVIEW') AND cur.pitch_id IN ${vis})`,
     submissionToPlatform: between("action = 'SUBMIT'", "action = 'RECORD_PLATFORM_PITCH'"),
     platformApprovalToDevelopment: between("action = 'MARK_PLATFORM_APPROVED'", "action = 'START_DEVELOPMENT'"),
     developmentToProduction: between("action = 'START_DEVELOPMENT'", "to_stage_key = 'PRODUCTION'"),
@@ -146,7 +143,7 @@ export async function myWork(db: Db, actor: Actor, now = new Date()) {
     ownerName: users.fullName, since: pitches.stageEnteredAt, updatedAt: pitches.updatedAt, priority: pitches.priority };
   const q = () => db.select(base).from(pitches).leftJoin(users, eq(users.id, pitches.currentOwnerId))
     .leftJoin(workflowStages, and(eq(workflowStages.definitionId, pitches.workflowDefinitionId), eq(workflowStages.key, pitches.currentStageKey)));
-  const pending = await q().where(and(vis, eq(pitches.currentOwnerId, actor.userId), inArray(pitches.currentStageKey, ["SUBMITTED", ...REVIEW_STAGES, "EXECUTIVE_REVIEW"]))).orderBy(pitches.stageEnteredAt).limit(50);
+  const pending = await q().where(and(vis, eq(pitches.currentOwnerId, actor.userId), inArray(pitches.currentStageKey, ["SUBMITTED", ...REVIEW_STAGES]))).orderBy(pitches.stageEnteredAt).limit(50);
   const assigned = await q().where(and(vis, eq(pitches.currentOwnerId, actor.userId))).orderBy(desc(pitches.updatedAt)).limit(50);
   const forwarded = await q().where(and(vis, sql`EXISTS (SELECT 1 FROM workflow_events we WHERE we.pitch_id = "pitches"."id" AND we.actor_id = ${actor.userId} AND we.action::text IN ('FORWARD','ACCEPT','SEND_BACK'))`))
     .orderBy(desc(pitches.updatedAt)).limit(50);
@@ -178,8 +175,8 @@ export async function executiveView(db: Db, actor: Actor, now = new Date()) {
   const q = () => db.select(base).from(pitches).innerJoin(creators, eq(creators.id, pitches.creatorId)).leftJoin(users, eq(users.id, pitches.currentOwnerId))
     .leftJoin(workflowStages, and(eq(workflowStages.definitionId, pitches.workflowDefinitionId), eq(workflowStages.key, pitches.currentStageKey)));
   const shape = <T extends { since: Date; rating: string | null }>(rows: T[]) => rows.map((r) => ({ ...r, rating: r.rating === null ? null : Number(r.rating), days: Math.floor((now.getTime() - r.since.getTime()) / 86_400_000) }));
-  const pendingApprovals = shape(await q().where(and(vis, eq(pitches.currentStageKey, "EXECUTIVE_REVIEW"))).orderBy(pitches.stageEnteredAt).limit(100));
-  const recommended = shape(await q().where(and(vis, inArray(pitches.currentStageKey, [...REVIEW_STAGES, "EXECUTIVE_REVIEW"]),
+  const pendingApprovals = shape(await q().where(and(vis, eq(pitches.currentStageKey, "SENIOR_REVIEW"))).orderBy(pitches.stageEnteredAt).limit(100));
+  const recommended = shape(await q().where(and(vis, inArray(pitches.currentStageKey, [...REVIEW_STAGES]),
     sql`EXISTS (SELECT 1 FROM workflow_events we WHERE we.pitch_id = "pitches"."id" AND we.action = 'ACCEPT')`)).orderBy(desc(pitches.updatedAt)).limit(50));
   const highPriority = shape(await q().where(and(vis, inArray(pitches.priority, ["HIGH", "URGENT"]), sql`${pitches.currentStageKey} NOT IN ('REJECTED','RELEASED')`)).orderBy(desc(pitches.updatedAt)).limit(50));
   const stronglyRated = shape(await q().where(and(vis, sql`${avg} >= 4`, sql`${pitches.currentStageKey} NOT IN ('REJECTED','RELEASED')`)).orderBy(desc(avg)).limit(50));

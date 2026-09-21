@@ -249,7 +249,7 @@ export async function creatorStats(db: DbOrTx, actor: Actor, creatorId: string) 
 
   const [s] = await db.select({
     total: sql<number>`count(*)::int`,
-    underReview: now(["SUBMITTED", "INITIAL_REVIEW", "INTERNAL_REVIEW", "SENIOR_REVIEW", "EXECUTIVE_REVIEW", "CHANGES_REQUESTED", "ON_HOLD"]),
+    underReview: now(["SUBMITTED", "INITIAL_REVIEW", "INTERNAL_REVIEW", "SENIOR_REVIEW", "CHANGES_REQUESTED", "ON_HOLD"]),
     rejected: now(["REJECTED"]),
     forwarded: did(["FORWARD", "ACCEPT"]),
     accepted: did(["ACCEPT"]),

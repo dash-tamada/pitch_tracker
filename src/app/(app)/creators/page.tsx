@@ -4,6 +4,7 @@ import { pageData, requirePageSession } from "@/server/lib/page-session";
 import { can } from "@/server/modules/authz/policy";
 import { listCreators } from "@/server/modules/creators/service";
 import { Empty, fmtDate, PageHeader } from "@/components/ui";
+import { CrewCard } from "@/components/crew-card";
 import { typeLabel } from "@/components/labels";
 
 const TYPES: [string, string][] = [["", "All types"], ["WRITER", "Writer"], ["DIRECTOR", "Director"], ["WRITER_DIRECTOR", "Writer + Director"], ["PRODUCER", "Producer"], ["CREATOR", "Creator"], ["OTHER", "Other"]];
@@ -26,21 +27,13 @@ export default async function CreatorsPage({ searchParams }: { searchParams: Pro
         <button className="btn-secondary">Search</button>
       </form>
       {page.items.length === 0 ? <Empty>No creators found.</Empty> : (
-        <div className="table-wrap">
-          <table className="data">
-            <thead><tr><th>Name</th><th>Type</th><th>Mobile</th><th>Location</th><th>Added</th></tr></thead>
-            <tbody>
-              {page.items.map((c) => (
-                <tr key={c.id}>
-                  <td><Link href={`/creators/${c.id}`}>{c.fullName}</Link></td>
-                  <td>{typeLabel(c.creatorType)}</td>
-                  <td>{c.mobile ?? "—"}</td>
-                  <td>{c.location ?? "—"}</td>
-                  <td>{fmtDate(c.createdAt)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="crew-grid">
+          {page.items.map((c) => (
+            <CrewCard key={c.id} c={{
+              id: c.id, fullName: c.fullName, role: typeLabel(c.creatorType),
+              mobile: c.mobile, location: c.location, createdAt: c.createdAt,
+            }} />
+          ))}
         </div>
       )}
       {next && <div className="pager"><Link className="btn-secondary" href={next}>Next page →</Link></div>}

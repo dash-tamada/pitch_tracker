@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { Clapboard, useClap } from "./clapboard";
 
 function csrfToken(): string {
   const name = document.cookie.includes("__Host-pt_csrf=") ? "__Host-pt_csrf" : "pt_csrf";
@@ -22,6 +23,7 @@ export function LoginForm({ initialStep }: { initialStep: "password" | "mfa" }) 
   const [step, setStep] = useState(initialStep);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const { clapping, clapThen } = useClap();
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -34,34 +36,39 @@ export function LoginForm({ initialStep }: { initialStep: "password" | "mfa" }) 
         // A temp password set by the platform must be replaced before MFA set-up or anything else.
         if (r.mustChangePassword) { window.location.assign("/change-password"); return; }
         if (r.mfaEnrolmentRequired) { window.location.assign("/mfa-setup"); return; }
-        if (r.mfaRequired) { setStep("mfa"); return; }
+        // Another take to go — the board only claps once the whole sign-in is done.
+        if (r.mfaRequired) { setStep("mfa"); setBusy(false); return; }
       } else {
         await post("/api/v1/auth/mfa/verify", { code: form.get("code") });
       }
-      window.location.assign("/dashboard"); // fixed internal path — no open redirect
+      clapThen("/dashboard"); // fixed internal path — no open redirect
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
-    } finally {
       setBusy(false);
     }
   }
 
   return (
-    <form onSubmit={onSubmit} noValidate>
-      <h1>{step === "password" ? "Sign in" : "Two-factor verification"}</h1>
-      {error && <p className="error" role="alert">{error}</p>}
-      {step === "password" ? (
-        <>
-          <label className="field">Work email<input name="email" type="email" autoComplete="username" required /></label>
-          <label className="field">Password<input name="password" type="password" autoComplete="current-password" required /></label>
-        </>
-      ) : (
-        <label className="field">6-digit code from your authenticator app
-          <input name="code" inputMode="numeric" autoComplete="one-time-code" pattern="\d{6}" maxLength={6} required />
-        </label>
-      )}
-      <button className="btn" disabled={busy}>{busy ? "Please wait…" : "Continue"}</button>
-      {step === "password" && <p className="subtle"><a href="/forgot-password">Forgot password?</a></p>}
-    </form>
+    <Clapboard
+      clapping={clapping}
+      scene={step === "password" ? undefined : "Second take"}
+      title={step === "password" ? "Sign in" : "Two-factor verification"}
+    >
+      <form onSubmit={onSubmit} noValidate>
+        {error && <p className="error" role="alert">{error}</p>}
+        {step === "password" ? (
+          <>
+            <label className="field">Work email<input name="email" type="email" autoComplete="username" required /></label>
+            <label className="field">Password<input name="password" type="password" autoComplete="current-password" required /></label>
+          </>
+        ) : (
+          <label className="field">6-digit code from your authenticator app
+            <input name="code" inputMode="numeric" autoComplete="one-time-code" pattern="\d{6}" maxLength={6} required />
+          </label>
+        )}
+        <button className="btn" disabled={busy}>{busy ? "Rolling…" : "Action"}</button>
+        {step === "password" && <p className="subtle"><a href="/forgot-password">Forgot password?</a></p>}
+      </form>
+    </Clapboard>
   );
 }

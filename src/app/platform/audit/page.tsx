@@ -16,7 +16,7 @@ export default async function PlatformAuditPage({ searchParams }: { searchParams
       <div className="table-wrap"><table className="data">
         <thead><tr><th>When</th><th>Event</th><th>Company</th><th>By</th><th>Details</th></tr></thead>
         <tbody>{page.items.map((i) => (
-          <tr key={i.id}><td>{fmtDateTime(i.createdAt)}</td><td>{i.action}</td><td>{i.companyCode ?? "Platform"}</td><td>{i.actorEmail ?? "—"}</td><td><code>{i.after ? JSON.stringify(i.after).slice(0, 160) : ""}</code></td></tr>
+          <tr key={i.id}><td>{fmtDateTime(i.createdAt)}</td><td>{i.action}</td><td>{i.companyCode ?? "Platform"}</td><td>{i.actorEmail ?? "—"}</td><td>{i.after ? <code>{JSON.stringify(i.after).slice(0, 160)}</code> : <span className="muted">&mdash;</span>}</td></tr>
         ))}</tbody>
       </table></div>
       {page.nextCursor && <Link href={`/platform/audit?${new URLSearchParams({ ...(action ? { action } : {}), cursor: page.nextCursor })}`}>Older →</Link>}

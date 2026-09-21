@@ -5,6 +5,16 @@ import { listCompanies, listPlans } from "@/server/modules/platform/service";
 import { ActionForm } from "@/components/action-form";
 import { fmtDate, PageHeader } from "@/components/ui";
 
+/** Company + subscription states share the workflow badge palette so the console reads like the rest of the app. */
+const STATUS_BADGE: Record<string, string> = {
+  ACTIVE: "b-approved", TRIAL: "b-review", SUSPENDED: "b-rejected",
+  EXPIRED: "b-rejected", CANCELLED: "b-hold", PENDING: "b-new",
+};
+const Badge = ({ value }: { value: string | null | undefined }) =>
+  value
+    ? <span className={"badge " + (STATUS_BADGE[value] ?? "b-new")}>{value.replaceAll("_", " ")}</span>
+    : <span className="muted">&mdash;</span>;
+
 export default async function CompaniesPage() {
   const { actor } = await requirePlatformPageSession();
   const db = getPlatformDb();
@@ -31,8 +41,11 @@ export default async function CompaniesPage() {
         <thead><tr><th>Company</th><th>Code</th><th>Status</th><th>Plan</th><th>Subscription</th><th>Users (active / invited)</th><th>Pitches</th><th>Storage</th><th>Created</th><th></th></tr></thead>
         <tbody>{companies.map((c) => (
           <tr key={c.id}>
-            <td><Link href={`/platform/companies/${c.id}`}>{c.name}</Link></td><td>{c.code}</td><td>{c.status.replaceAll("_", " ")}</td>
-            <td>{c.planKey ?? "—"}</td><td>{c.subscriptionStatus ?? "—"}{c.endsOn ? ` · ends ${fmtDate(c.endsOn)}` : ""}</td>
+            <td><Link href={`/platform/companies/${c.id}`}>{c.name}</Link></td>
+            <td><code className="tag-code">{c.code}</code></td>
+            <td><Badge value={c.status} /></td>
+            <td>{c.planKey ? <code className="tag-code">{c.planKey}</code> : <span className="muted">&mdash;</span>}</td>
+            <td><Badge value={c.subscriptionStatus} />{c.endsOn ? <div className="muted">ends {fmtDate(c.endsOn)}</div> : null}</td>
             <td>{c.usage ? `${c.usage.usersActive} / ${c.usage.usersInvited}` : "—"}</td><td>{c.usage?.pitches ?? "—"}</td>
             <td>{c.usage ? `${(c.usage.storageBytes / 1024 ** 2).toFixed(1)} MB` : "—"}</td><td>{fmtDate(c.createdAt)}</td>
             <td><Link href={`/platform/companies/${c.id}`}>Edit</Link></td>

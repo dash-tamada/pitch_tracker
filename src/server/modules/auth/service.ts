@@ -83,6 +83,15 @@ export async function login(db: Db, raw: unknown, ctx: RequestContext = {}, now 
     throw INVALID();
   }
 
+  return issueSession(db, user, { emailHash, ip }, ctx, now);
+}
+
+/**
+ * Everything that happens once a person has proved who they are (password, or a verified Google email):
+ * company-status gate, MFA decision, session row, audit. Shared so both routes enforce exactly the same rules.
+ */
+export async function issueSession(db: Db, user: typeof users.$inferSelect, id: { emailHash: Buffer; ip: string | null }, ctx: RequestContext, now: Date): Promise<LoginResult> {
+  const { emailHash, ip } = id;
   if (user.scope === "COMPANY") {
     const [company] = await db.select({ status: companies.status }).from(companies).where(eq(companies.id, user.companyId!));
     if (!company || BLOCKED_COMPANY_STATUSES.has(company.status)) {
@@ -217,4 +226,22 @@ export async function logout(db: Db, token: string | undefined, ctx: RequestCont
 /** Revoke every session for a user (password change, role change, disable). Works on either connection (RLS scopes pitch_app to its company). */
 export async function revokeAllSessions(db: DbOrTx, userId: string): Promise<void> {
   await db.update(sessions).set({ revokedAt: new Date() }).where(and(eq(sessions.userId, userId), isNull(sessions.revokedAt)));
+}
+
+/**
+ * Sign-in with a Google account whose email Google has verified. Only people who already have an active
+ * account can get in — Google proves who they are, it never creates users or grants access. Same lockout,
+ * company-status and MFA rules as the password path (a platform or privileged account still needs its second factor).
+ */
+export async function loginWithGoogle(db: Db, verifiedEmail: string, ctx: RequestContext = {}, now = new Date()): Promise<LoginResult> {
+  const email = verifiedEmail.trim().toLowerCase();
+  const emailHash = hashIdentifier(email);
+  const ip = ctx.ip ?? null;
+  const [user] = await db.select().from(users).where(and(eq(users.email, email), isNull(users.archivedAt)));
+  if (!user || user.status !== "ACTIVE" || (user.lockedUntil && user.lockedUntil > now)) {
+    await db.insert(loginAttempts).values({ emailHash, ip, success: false });
+    await writeAudit(db, { companyId: user?.companyId ?? null, actorId: user?.id ?? null, action: "auth.google_login_denied", resourceType: "auth" }, ctx);
+    throw new AppError("GOOGLE_NOT_ALLOWED", "This Google account is not registered for Pitch Tracker. Ask your administrator to invite you.");
+  }
+  return issueSession(db, user, { emailHash, ip }, ctx, now);
 }

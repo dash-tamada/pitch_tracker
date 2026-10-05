@@ -863,3 +863,84 @@ table.data code.tag-code, .tag-code {
    so they flow as a row; the moment one opens it becomes a <form> and takes the full width. */
 .action-stack { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start; }
 .action-stack > form { flex: 1 1 100%; }
+
+/* ═══ Dashboard — soft bento redesign (Ascendia-style): bright rounded cards, peach glow, pills ═══ */
+.dash { --d-bg: #faf6ee; --d-card: #fff; --d-line: #efe7d8; --d-peach: #ffe3d3; --d-r: 22px; }
+.dash h1, .dash h2, .dash h3, .dash .card .value { text-transform: none; font-family: var(--archivo, inherit); font-weight: 700; letter-spacing: -.02em; line-height: 1.12; }
+.dash .italic-accent { font-family: var(--serif); font-weight: 400; }
+.dash-lede { color: var(--muted); font-size: 14px; margin: 0 0 18px; }
+
+.dash .hero {
+  background: radial-gradient(120% 140% at 100% 0%, var(--d-peach) 0%, rgba(255, 227, 211, 0) 55%), #fff;
+  color: var(--ink); border: 1px solid var(--d-line); border-radius: 28px;
+  box-shadow: 0 24px 50px -30px rgba(239, 75, 35, .35); margin-bottom: 14px;
+}
+.dash .hero::before, .dash .hero::after { display: none; }
+.dash .hero-eyebrow { background: #fff; color: var(--orange-deep); border: 1px solid var(--d-peach); box-shadow: var(--shadow-sm); }
+.dash .hero-title { font-size: clamp(30px, 4.4vw, 54px); max-width: 17ch; }
+.dash .hero-title .italic-accent { color: var(--orange); }
+.dash .hero-sub { color: var(--ink-2); }
+.dash .hero-strip { border-top: 1px solid var(--d-line); }
+.dash .hero-strip .n { font-family: var(--archivo, inherit); font-weight: 700; font-size: 34px; color: var(--ink); letter-spacing: -.03em; }
+.dash .hero-strip .k { color: var(--muted); }
+.hero-cta { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 22px; }
+.pill { display: inline-flex; align-items: center; padding: 11px 20px; border-radius: 999px; font-size: 13.5px; font-weight: 700; text-decoration: none; transition: transform .18s var(--ease-pop), box-shadow .18s; }
+.pill:hover { transform: translateY(-2px); }
+.pill-dark { background: #14121f; color: #fff; box-shadow: 0 10px 20px -10px rgba(20, 18, 31, .6); }
+.pill-light { background: #fff; color: var(--ink); border: 1px solid var(--d-line); }
+
+/* drifting specks: always travelling left → right, then re-entering from the left */
+.dust { position: absolute; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
+.dust span { position: absolute; left: -4%; border-radius: 50%; background: var(--orange-2); opacity: 0; animation-name: dust-right; animation-timing-function: linear; animation-iteration-count: infinite; }
+@keyframes dust-right { 0% { transform: translateX(0); opacity: 0; } 10% { opacity: .55; } 90% { opacity: .55; } 100% { transform: translateX(112vw); opacity: 0; } }
+.dust-1 { top: 17%; width: 4px; height: 4px; animation-duration: 18s; animation-delay: 0s; }
+.dust-2 { top: 34%; width: 6px; height: 6px; animation-duration: 26s; animation-delay: -6s; }
+.dust-3 { top: 51%; width: 3px; height: 3px; animation-duration: 14s; animation-delay: -3s; }
+.dust-4 { top: 68%; width: 5px; height: 5px; animation-duration: 22s; animation-delay: -9s; }
+.dust-5 { top: 85%; width: 7px; height: 7px; animation-duration: 30s; animation-delay: -12s; }
+.dust-6 { top: 10%; width: 4px; height: 4px; animation-duration: 16s; animation-delay: -2s; }
+.dust-7 { top: 27%; width: 5px; height: 5px; animation-duration: 24s; animation-delay: -15s; }
+.dust-8 { top: 44%; width: 3px; height: 3px; animation-duration: 12s; animation-delay: -5s; }
+.dust-9 { top: 61%; width: 6px; height: 6px; animation-duration: 28s; animation-delay: -8s; }
+.dust-10 { top: 78%; width: 4px; height: 4px; animation-duration: 20s; animation-delay: -11s; }
+.dust-11 { top: 3%; width: 5px; height: 5px; animation-duration: 25s; animation-delay: -14s; }
+.dust-12 { top: 20%; width: 3px; height: 3px; animation-duration: 15s; animation-delay: -1s; }
+.dust-13 { top: 37%; width: 4px; height: 4px; animation-duration: 19s; animation-delay: -7s; }
+.dust-14 { top: 54%; width: 6px; height: 6px; animation-duration: 27s; animation-delay: -4s; }
+.dust-15 { top: 71%; width: 3px; height: 3px; animation-duration: 13s; animation-delay: -10s; }
+.dust-16 { top: 88%; width: 4px; height: 4px; animation-duration: 21s; animation-delay: -13s; }
+
+/* stat tiles → soft rounded bento cells */
+.dash .cards { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; margin-bottom: 14px; }
+.dash .card { background: var(--d-card); border: 1px solid var(--d-line); border-radius: 20px; padding: 18px; box-shadow: 0 14px 28px -24px rgba(20, 19, 15, .4); transition: transform .2s var(--ease-pop), box-shadow .2s; }
+.dash .card:hover { background: var(--d-card); border-color: var(--d-peach); transform: translateY(-3px); box-shadow: 0 22px 34px -22px rgba(239, 75, 35, .35); }
+.dash .card .label { font-size: 11px; letter-spacing: .04em; text-transform: none; font-weight: 600; }
+.dash .card .value { font-size: 36px; }
+.dash .card::after { background: linear-gradient(90deg, var(--orange), var(--orange-2)); }
+.dash .section { background: var(--d-card); border: 1px solid var(--d-line); border-radius: var(--d-r); box-shadow: 0 14px 28px -26px rgba(20, 19, 15, .4); }
+.dash .section h2 { font-size: 17px; border-bottom: 1px solid var(--d-line); }
+.dash .grid-2 { gap: 14px; }
+
+/* legends */
+.legends { margin: 4px 0 18px; }
+.legends-head h2 { font-size: 20px; margin: 0 0 2px; }
+.legends-head .subtle { margin-bottom: 12px; }
+.legend-row { list-style: none; margin: 0; padding: 4px 2px 14px; display: flex; gap: 14px; overflow-x: auto; scroll-snap-type: x proximity; }
+.legend { flex: 0 0 188px; scroll-snap-align: start; background: #fff; border: 1px solid var(--d-line); border-radius: 22px; overflow: hidden; box-shadow: 0 14px 28px -24px rgba(20, 19, 15, .5); transition: transform .22s var(--ease-pop), box-shadow .22s; }
+.legend:hover { transform: translateY(-5px); box-shadow: 0 24px 36px -22px rgba(239, 75, 35, .4); }
+.legend-photo { aspect-ratio: 4 / 5; display: grid; place-items: center; overflow: hidden; }
+.legend-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.legend-mono { font-family: var(--serif); font-style: italic; font-size: 64px; color: rgba(255, 255, 255, .92); text-shadow: 0 4px 18px rgba(0, 0, 0, .25); }
+.tone-1 .legend-photo { background: linear-gradient(150deg, #ff7a45, #c73a15); }
+.tone-2 .legend-photo { background: linear-gradient(150deg, #7c6bd6, #3d2f8f); }
+.tone-3 .legend-photo { background: linear-gradient(150deg, #e0568a, #8f1f4f); }
+.tone-4 .legend-photo { background: linear-gradient(150deg, #2fa38f, #146253); }
+.tone-5 .legend-photo { background: linear-gradient(150deg, #e0a526, #96620a); }
+.tone-6 .legend-photo { background: linear-gradient(150deg, #3f8be0, #1b4a8f); }
+.legend-body { padding: 12px 14px 15px; }
+.legend-tag { font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--orange-deep); }
+.legend-name { font-weight: 700; font-size: 15px; margin: 3px 0 4px; }
+.legend-film { font-size: 12.5px; color: var(--ink-2); }
+.legend-film span { color: var(--muted); }
+
+@media (prefers-reduced-motion: reduce) { .dust span { animation: none; opacity: 0; } .legend, .pill, .dash .card { transition: none; } }

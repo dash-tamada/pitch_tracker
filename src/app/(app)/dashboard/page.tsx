@@ -6,8 +6,9 @@ import { agingPitches, breakdowns, dashboardSummary, funnel, myWork, timeMetrics
 import { getLookups, labelOf } from "@/server/modules/lookups/service";
 import { Funnel, GroupedMonthChart, HBarChart } from "@/components/charts";
 import { ACTION_LABEL } from "@/components/labels";
-import { Empty, fmtDate, PageHeader, StageBadge, Stat } from "@/components/ui";
+import { Empty, fmtDate, StageBadge, Stat } from "@/components/ui";
 import { HeroBanner } from "@/components/hero-banner";
+import { Legends } from "@/components/legends";
 import { companyBranding } from "@/server/modules/tenancy/company";
 
 export default async function DashboardPage() {
@@ -18,9 +19,9 @@ export default async function DashboardPage() {
   const [b, t, aging] = management ? await Promise.all([breakdowns(db, actor), timeMetrics(db, actor), agingPitches(db, actor)]) : [null, null, null];
 
   return (
-    <>
-      <HeroBanner name={brand?.name ?? "This studio"} total={s.total} inReview={s.underReview} inProduction={s.inProduction} />
-      <PageHeader title="Dashboard" subtitle={management ? "The whole story pipeline you are cleared to see." : "Your stories and what needs your attention."} />
+    <div className="dash">
+      <HeroBanner name={brand?.name ?? "This studio"} total={s.total} inReview={s.underReview} inProduction={s.inProduction} canCreate={can(actor, "pitch.create")} />
+      <p className="dash-lede">{management ? "The whole story pipeline you are cleared to see." : "Your stories and what needs your attention."}</p>
       <div className="cards">
         <Stat label="Total pitches" value={s.total} />
         <Stat label="New (this month)" value={s.newThisMonth} />
@@ -55,6 +56,8 @@ export default async function DashboardPage() {
         </div>
       </div>
 
+      <Legends />
+
       <Funnel steps={f} />
 
       {b && t && aging && (
@@ -84,6 +87,6 @@ export default async function DashboardPage() {
           </div>
         </>
       )}
-    </>
+    </div>
   );
 }

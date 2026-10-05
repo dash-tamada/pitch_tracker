@@ -30,9 +30,9 @@ export async function GET(req: NextRequest) {
     return res;
   } catch (err) {
     // Operational detail only (no tokens, no email): which stage failed, and the driver/network error code.
-    const cause = (err as { cause?: { code?: string } } | null)?.cause;
+    const cause = (err as { cause?: { code?: string; message?: string } } | null)?.cause;
     console.error(JSON.stringify({ level: "error", route: "google-callback", name: err instanceof Error ? err.name : "unknown",
-      message: err instanceof Error ? err.message.slice(0, 300) : undefined, code: (err as { code?: string }).code, dbCode: cause?.code }));
+      message: err instanceof Error ? err.message.slice(0, 300) : undefined, code: (err as { code?: string }).code, dbCode: cause?.code, dbMessage: cause?.message?.slice(0, 200) }));
     return fail(err instanceof AppError && err.code === "GOOGLE_NOT_ALLOWED" ? "google_denied" : "google_failed");
   }
 }

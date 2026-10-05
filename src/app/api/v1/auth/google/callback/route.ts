@@ -29,6 +29,10 @@ export async function GET(req: NextRequest) {
     res.cookies.delete(OAUTH_COOKIE());
     return res;
   } catch (err) {
+    // Operational detail only (no tokens, no email): which stage failed, and the driver/network error code.
+    const cause = (err as { cause?: { code?: string } } | null)?.cause;
+    console.error(JSON.stringify({ level: "error", route: "google-callback", name: err instanceof Error ? err.name : "unknown",
+      message: err instanceof Error ? err.message.slice(0, 300) : undefined, code: (err as { code?: string }).code, dbCode: cause?.code }));
     return fail(err instanceof AppError && err.code === "GOOGLE_NOT_ALLOWED" ? "google_denied" : "google_failed");
   }
 }

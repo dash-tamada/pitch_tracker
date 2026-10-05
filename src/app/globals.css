@@ -944,3 +944,9 @@ table.data code.tag-code, .tag-code {
 .legend-film span { color: var(--muted); }
 
 @media (prefers-reduced-motion: reduce) { .dust span { animation: none; opacity: 0; } .legend, .pill, .dash .card { transition: none; } }
+
+/* sign in with Google, under the clapper-board form */
+.or-rule { display: flex; align-items: center; gap: 10px; margin: 14px 0 10px; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .14em; }
+.or-rule::before, .or-rule::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.google-btn { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 11px 16px; border-radius: 999px; background: #fff; color: #1f1f1f; border: 1px solid #dadce0; font-size: 14px; font-weight: 600; text-decoration: none; transition: box-shadow .18s, transform .18s var(--ease-pop); }
+.google-btn:hover { box-shadow: 0 6px 16px -8px rgba(0, 0, 0, .35); transform: translateY(-1px); }

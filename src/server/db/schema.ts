@@ -198,6 +198,9 @@ export const publicDrafts = pgTable("public_drafts", {
   targetAudience: varchar("target_audience", { length: 200 }),
   notes: text("notes"),
   status: varchar("status", { length: 12 }).notNull().default("DRAFT"),
+  sentCompanyId: uuid("sent_company_id"),
+  sentPitchId: uuid("sent_pitch_id"),
+  sentAt: timestamp("sent_at", { withTimezone: true }),
   createdAt: createdAt(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [index("public_drafts_creator_idx").on(t.creatorId, t.updatedAt)]);
@@ -382,6 +385,8 @@ export const creators = pgTable("creators", {
   portalStatus: creatorPortalStatus("portal_status").notNull().default("ACTIVE"),
   /** "New pitch" stays hidden in the portal until this is set (first-time onboarding gate). */
   profileCompletedAt: timestamp("profile_completed_at", { withTimezone: true }),
+  /** Set when this record was created by a platform-wide creator sending a draft to the company (no email/password). */
+  publicCreatorId: uuid("public_creator_id"),
 }, (t) => [
   uniqueIndex("creators_company_mobile_uq").on(t.companyId, t.mobileE164).where(sql`${t.mobileE164} IS NOT NULL`),
   uniqueIndex("creators_company_email_uq").on(t.companyId, t.emailNormalized).where(sql`${t.emailNormalized} IS NOT NULL`),
@@ -391,7 +396,8 @@ export const creators = pgTable("creators", {
   // Exactly one authorship path: staff-created (created_by_id) XOR self-registered through the portal.
   check("creators_author_ck", sql`(${t.createdById} IS NOT NULL) <> ${t.selfRegistered}`),
   // A self-registered creator must have both an email (their login identifier) and a password.
-  check("creators_portal_identity_ck", sql`NOT ${t.selfRegistered} OR (${t.emailNormalized} IS NOT NULL AND ${t.passwordHash} IS NOT NULL)`),
+  uniqueIndex("creators_company_public_creator_uq").on(t.companyId, t.publicCreatorId).where(sql`${t.publicCreatorId} IS NOT NULL`),
+  check("creators_portal_identity_ck", sql`NOT ${t.selfRegistered} OR (${t.emailNormalized} IS NOT NULL AND ${t.passwordHash} IS NOT NULL) OR ${t.publicCreatorId} IS NOT NULL`),
 ]);
 
 /** Sessions for the creator portal — a distinct DB role/table from staff `sessions`, never shared. */
@@ -919,6 +925,8 @@ export const companies = pgTable("companies", {
   /** Hashed like every other bearer token here; the raw token is shown to the Company Admin once and never stored.
    *  Regenerating it (a fresh hash) invalidates old copies of the link without touching already-registered creators. */
   creatorPortalTokenHash: bytea("creator_portal_token_hash"),
+  /** false hides the company from the platform-wide creators' "send to a company" list. */
+  acceptsCreatorSubmissions: boolean("accepts_creator_submissions").notNull().default(true),
 }, (t) => [
   uniqueIndex("companies_code_uq").on(t.code),
   uniqueIndex("companies_creator_portal_token_hash_uq").on(t.creatorPortalTokenHash).where(sql`${t.creatorPortalTokenHash} IS NOT NULL`),

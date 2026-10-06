@@ -278,13 +278,11 @@ async function PlatformsTab({ actor, pitchId, version, stageKey, ownerId, lookup
   const platforms = await getPlatformOptions(db);
   const docs = can(actor, "document.view_meta") ? await listPitchDocuments(db, actor, pitchId) : [];
   const versionOpts = docs.flatMap((d) => d.versions.map((v) => ({ value: v.id, label: `${d.title} V${v.versionNo}${v.isCurrent ? " (current)" : ""}`, category: d.categoryKey })));
-  const canPitch = can(actor, "platform.pitch") && ["APPROVED_FOR_PLATFORM", "PLATFORM_PITCHING"].includes(stageKey) && ownerId === actor.userId;
+  const canPitch = can(actor, "platform.pitch") && ["SUBMITTED", "INITIAL_REVIEW", "INTERNAL_REVIEW", "SENIOR_REVIEW", "APPROVED_FOR_PLATFORM", "PLATFORM_PITCHING"].includes(stageKey);
   const statusOpts = Object.entries(PLATFORM_STATUS_LABEL).filter(([k]) => k !== "NOT_YET_PITCHED").map(([value, label]) => ({ value, label }));
   const today = new Date(Date.now() + 5.5 * 3600_000).toISOString().slice(0, 10);
   return (
     <>
-      {!["APPROVED_FOR_PLATFORM", "PLATFORM_PITCHING", "PLATFORM_APPROVED", "READY_FOR_DEVELOPMENT", "DEVELOPMENT", "GREENLIT", "PRE_PRODUCTION", "PRODUCTION", "POST_PRODUCTION", "COMPLETED", "RELEASED"].includes(stageKey) &&
-        <p className="notice">A pitch can be sent to platforms only after CEO / COO approval.</p>}
       {canPitch && (
         <ActionForm endpoint={`/api/v1/pitches/${pitchId}/platform-pitches`} title="+ Record a platform pitch" submitLabel="Record pitch" collapsed extra={{ expectedVersion: version }}
           fields={[

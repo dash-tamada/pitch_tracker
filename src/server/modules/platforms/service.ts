@@ -189,7 +189,7 @@ export async function recordPlatformPitch(db: Db, actor: Actor, pitchId: string,
   await assertVersionOfPitch(db, input.deckVersionId, pitchId, "deckVersionId");
 
   return db.transaction(async (tx) => {
-    // Workflow first: fails unless CEO/COO approval happened and the actor holds the pitch (business rule 8).
+    // Workflow first: the stage must allow a platform pitch (any open stage up to platform pitching); no approval or ownership needed.
     const wf = await performAction(tx, actor, pitchId, { action: "RECORD_PLATFORM_PITCH", expectedVersion: input.expectedVersion,
       platformId: input.platformId, ...(input.remarks ? { remarks: input.remarks } : {}) }, ctx, { viaTrackerService: true });
     const [{ r } = { r: 0 }] = await tx.select({ r: max(platformPitches.roundNo) }).from(platformPitches)

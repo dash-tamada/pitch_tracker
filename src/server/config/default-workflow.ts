@@ -108,11 +108,11 @@ export const DEFAULT_TRANSITIONS: TransitionDef[] = [
   { from: "SENIOR_REVIEW", to: "APPROVED_FOR_PLATFORM", action: "SEND_TO_PLATFORM", permission: "pitch.send_to_platform",
     roles: SENIOR_UP, requiresCurrentOwner: false, requiresRemarks: true, requiresRecipient: true, isApproval: true },
 
-  // Platform stage
-  { from: "APPROVED_FOR_PLATFORM", to: "PLATFORM_PITCHING", action: "RECORD_PLATFORM_PITCH", permission: "platform.pitch",
-    requiresPlatform: true },
-  { from: "PLATFORM_PITCHING", to: "PLATFORM_PITCHING", action: "RECORD_PLATFORM_PITCH", permission: "platform.pitch",
-    requiresPlatform: true },
+  // Platform stage. Anyone holding platform.pitch can record a pitch to a platform from any open stage —
+  // no review approval and no ownership needed (the pitch keeps whoever currently holds it).
+  ...["SUBMITTED", "INITIAL_REVIEW", "INTERNAL_REVIEW", "SENIOR_REVIEW", "APPROVED_FOR_PLATFORM", "PLATFORM_PITCHING"]
+    .map<TransitionDef>((s) => ({ from: s, to: "PLATFORM_PITCHING", action: "RECORD_PLATFORM_PITCH", permission: "platform.pitch",
+      requiresCurrentOwner: false, requiresPlatform: true })),
   { from: "PLATFORM_PITCHING", to: "PLATFORM_APPROVED", action: "MARK_PLATFORM_APPROVED", permission: "platform.record_response",
     requiresPlatform: true, requiresRemarks: true },
   { from: "PLATFORM_PITCHING", to: "REJECTED", action: "REJECT", permission: "pitch.reject",

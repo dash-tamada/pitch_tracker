@@ -56,22 +56,11 @@ function requestBody(digitsTo: string, code: string): unknown {
   };
 }
 
-export async function sendWhatsappOtp(e164: string, code: string): Promise<void> {
-  if (!configured()) {
-    if (isProd()) throw new Error("PINNACLE_* settings are not configured");
-    console.log(`[dev] WhatsApp OTP for ${e164}: ${code}`);
-    return;
-  }
-  const url = new URL(endpoint());
-  console.log(JSON.stringify({ level: "info", route: "whatsapp-otp", step: "request", style: style(), host: url.host,
-    path: url.pathname.replace(/\/v(\d+)\/[^/]+\//, "/v$1/<id>/"), idLength: phoneId().length, keyLength: apiKey().length, header: "apikey" }));
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "content-type": "application/json", apikey: apiKey() },
-    body: JSON.stringify(requestBody(e164.replace(/\D/g, ""), code)),
-    signal: AbortSignal.timeout(10_000),
-  });
-  // The reply can echo the number or code, so only a few known status/error fields are ever surfaced — never the raw body.
+interface Attempt { label: string; url: URL; headers: Record<string, string> }
+interface Outcome { status: number; rejected: boolean; reason: string }
+
+/** Reads Pinnacle's reply. Only a few known status/error fields are ever surfaced — the raw body can echo the number or code. */
+async function interpret(res: Response): Promise<Outcome> {
   const text = await res.text().catch(() => "");
   let body: Record<string, unknown> = {};
   try { body = JSON.parse(text) as Record<string, unknown>; } catch { /* not JSON */ }
@@ -83,6 +72,46 @@ export async function sendWhatsappOtp(e164: string, code: string): Promise<void>
   const messages = Array.isArray(body.messages) ? (body.messages as Array<Record<string, unknown>>) : [];
   const hasId = Boolean(messages[0]?.id || body.messageId || body.message_id || (body.success === true));
   const rejected = !res.ok || body.success === false || body.status === "failed" || body.status === "error" || Boolean(body.error) || (!hasId && typeof body.message === "string");
-  if (rejected) throw new Error(`pinnacle ${res.status}${reason ? `: ${reason}` : ""}`);
-  console.log(JSON.stringify({ level: "info", route: "whatsapp-otp", provider: "pinnacle", status: res.status, reply: reason || "accepted" }));
+  return { status: res.status, rejected, reason };
+}
+
+/**
+ * The attempts to make, in order. Normally one. With PINNACLE_DEBUG_FALLBACK=1 and the Meta style, a 401 (which sends nothing)
+ * is retried with the other likely ways to authenticate — the business number in the URL instead of the phone-number id, and an
+ * Authorization: Bearer header instead of `apikey` — and the log says which one Pinnacle accepted.
+ */
+function attempts(): Attempt[] {
+  const main = new URL(endpoint());
+  const json = { "content-type": "application/json" };
+  const list: Attempt[] = [{ label: "id+apikey", url: main, headers: { ...json, apikey: apiKey() } }];
+  const number = fromNumber().replace(/\D/g, "");
+  if (process.env.PINNACLE_DEBUG_FALLBACK === "1" && style() === "meta") {
+    const withNumber = number ? new URL(main.toString().replace(/\/v(\d+)\/[^/]+\//, `/v$1/${number}/`)) : null;
+    if (withNumber) list.push({ label: "number+apikey", url: withNumber, headers: { ...json, apikey: apiKey() } });
+    list.push({ label: "id+bearer", url: main, headers: { ...json, authorization: `Bearer ${apiKey()}` } });
+    if (withNumber) list.push({ label: "number+bearer", url: withNumber, headers: { ...json, authorization: `Bearer ${apiKey()}` } });
+  }
+  return list;
+}
+
+export async function sendWhatsappOtp(e164: string, code: string): Promise<void> {
+  if (!configured()) {
+    if (isProd()) throw new Error("PINNACLE_* settings are not configured");
+    console.log(`[dev] WhatsApp OTP for ${e164}: ${code}`);
+    return;
+  }
+  const list = attempts();
+  const first = list[0]!;
+  console.log(JSON.stringify({ level: "info", route: "whatsapp-otp", step: "request", style: style(), host: first.url.host,
+    path: first.url.pathname.replace(/\/v(\d+)\/[^/]+\//, "/v$1/<id>/"), idLength: phoneId().length, numberLength: fromNumber().replace(/\D/g, "").length,
+    keyLength: apiKey().length, header: "apikey", attempts: list.length }));
+  let last: Outcome | undefined;
+  for (const a of list) {
+    const res = await fetch(a.url, { method: "POST", headers: a.headers, body: JSON.stringify(requestBody(e164.replace(/\D/g, ""), code)), signal: AbortSignal.timeout(10_000) });
+    last = await interpret(res);
+    console.log(JSON.stringify({ level: last.rejected ? "warn" : "info", route: "whatsapp-otp", provider: "pinnacle", attempt: a.label, status: last.status, reply: last.reason || (last.rejected ? "rejected" : "accepted") }));
+    if (!last.rejected) return;
+    if (last.status !== 401) break; // only an authentication failure is worth another way of authenticating
+  }
+  throw new Error(`pinnacle ${last!.status}${last!.reason ? `: ${last!.reason}` : ""}`);
 }

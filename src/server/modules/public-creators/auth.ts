@@ -43,8 +43,7 @@ async function startSession(db: Db, creatorId: string, ctx: RequestContext, now:
 export async function requestPublicOtp(db: Db, raw: unknown, ctx: RequestContext = {}, now = new Date()): Promise<{ sent: true }> {
   const { mobile } = parseInput(requestSchema, raw);
   const e164 = validMobile(mobile);
-  const code = await issueCode(db, scope(e164), ctx, now);
-  await deliverCode(e164, code);
+  await deliverCode(db, e164, await issueCode(db, scope(e164), ctx, now));
   return { sent: true };
 }
 

@@ -49,7 +49,7 @@ function bestMatch(pathname: string, items: NavItem[]): string | null {
     .sort((a, b) => b.length - a.length)[0] ?? null;
 }
 
-export function NavLinks({ items }: { items: NavItem[] }) {
+export function NavLinks({ items, badges = {} }: { items: NavItem[]; badges?: Record<string, number> }) {
   const pathname = usePathname();
   const current = bestMatch(pathname, items);
   return (
@@ -61,6 +61,7 @@ export function NavLinks({ items }: { items: NavItem[] }) {
           <Link key={n.href} href={n.href} className={active ? "nav-link active" : "nav-link"} aria-current={active ? "page" : undefined}>
             {IconCmp?.({})}
             {n.label}
+            {(badges[n.href] ?? 0) > 0 && <span className="nav-badge" aria-label={`${badges[n.href]} unread`}>{badges[n.href]}</span>}
           </Link>
         );
       })}

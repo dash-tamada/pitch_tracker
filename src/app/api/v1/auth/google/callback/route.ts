@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
 
     const email = await verifiedEmailFromCode(code, saved.verifier, saved.nonce);
     const r = await loginWithGoogle(getPlatformDb(), email, requestContext(req));
-    const next = r.mustChangePassword ? "/change-password" : r.mfaEnrolmentRequired ? "/mfa-setup" : r.mfaRequired ? "/login?step=mfa" : "/dashboard";
+    const next = r.mustChangePassword ? "/change-password" : r.mfaEnrolmentRequired ? "/mfa-setup" : r.mfaRequired ? "/login?step=mfa" : "/login?ready=1";
     const res = NextResponse.redirect(new URL(next, origin));
     res.cookies.set(SESSION_COOKIE(), r.token, sessionCookieOptions(r.expiresAt));
     res.cookies.delete(OAUTH_COOKIE());

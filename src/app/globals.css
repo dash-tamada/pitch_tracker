@@ -1157,3 +1157,30 @@ table.data code.tag-code, .tag-code {
 /* the platform-wide creator area (/creator) */
 .creator-shell { max-width: 880px; margin: 0 auto; padding: 28px clamp(16px, 4vw, 32px) 64px; }
 .creator-shell .page-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
+
+/* ═══ Cinematic sign-in: the take on the slate, and the dashboard's camera monitor ═══ */
+
+/* "Scene 12 · Take 042" chalked on the slate once you are signed in */
+.clap-take { display: flex; gap: 22px; margin: -8px 0 18px; font-size: 13px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.clap-take b { font-family: var(--display); font-size: 30px; letter-spacing: .02em; color: var(--ink); margin-left: 6px; font-weight: 400; vertical-align: -3px; }
+
+/* ── the camera monitor over the app (viewfinder-hud.tsx) ── */
+.has-vf { padding: 24px 0; box-sizing: border-box; }
+.vf { position: fixed; inset: 0; z-index: 60; pointer-events: none; font: 600 11px/1 ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; letter-spacing: .04em; color: #e9e6df; }
+.vf-frame { position: absolute; inset: 24px 8px; border: 1px solid rgba(111, 134, 255, .45); }
+.vf-h { position: absolute; width: 7px; height: 7px; background: #6f86ff; opacity: .9; }
+.vf-h-tl { left: -4px; top: -4px; } .vf-h-tr { right: -4px; top: -4px; } .vf-h-bl { left: -4px; bottom: -4px; } .vf-h-br { right: -4px; bottom: -4px; }
+.vf-h-tm { left: calc(50% - 4px); top: -4px; } .vf-h-bm { left: calc(50% - 4px); bottom: -4px; }
+.vf-h-ml { left: -4px; top: calc(50% - 4px); } .vf-h-mr { right: -4px; top: calc(50% - 4px); }
+.vf-cross { position: absolute; left: calc(50% - 9px); top: calc(50% - 9px); width: 18px; height: 18px; border: 1px solid rgba(111, 134, 255, .35); border-radius: 50%; }
+.vf-cross::after { content: ""; position: absolute; left: 7px; top: 7px; width: 2px; height: 2px; border-radius: 50%; background: rgba(111, 134, 255, .6); }
+.vf-bar { position: absolute; left: 0; right: 0; height: 24px; display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 0 14px; background: rgba(14, 13, 12, .9); white-space: nowrap; overflow: hidden; }
+.vf-top { top: 0; } .vf-bottom { bottom: 0; }
+.vf-bar b { color: #fff; font-weight: 700; }
+.vf-bar span { opacity: .8; }
+.vf-side { padding: 1px 6px; background: #d4342c; color: #fff; border-radius: 2px; opacity: 1 !important; }
+.vf-rec { color: #ff5a4d; opacity: 1 !important; font-weight: 800; }
+.vf-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #ff2d1f; margin-right: 5px; animation: vf-blink 1.2s steps(2, jump-none) infinite; }
+@keyframes vf-blink { 0% { opacity: 1; } 50% { opacity: .15; } 100% { opacity: 1; } }
+@media (max-width: 900px) { .vf-top span:nth-child(n+5):not(.vf-side), .vf-bottom span:nth-child(n+2):not(.vf-rec):not(:last-child) { display: none; } .vf-bar { gap: 8px; padding: 0 8px; } }
+@media (prefers-reduced-motion: reduce) { .vf-dot { animation: none; } }

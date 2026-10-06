@@ -37,13 +37,15 @@ export function useClap() {
 }
 
 export function Clapboard({
-  title, scene, children, clapping = false,
+  title, scene, children, clapping = false, take,
 }: {
   title: string;
   /** Optional context line under the lockup, e.g. which portal this board belongs to. */
   scene?: string;
   children: ReactNode;
   clapping?: boolean;
+  /** Chalk the scene and take number on the slate, e.g. { scene: 12, take: "042" }. */
+  take?: { scene: number; take: string };
 }) {
   return (
     // Submitting the form is the user gesture that lets the browser start audio; the clap itself only
@@ -60,6 +62,7 @@ export function Clapboard({
           <Wordmark />
           {scene && <p className="clap-scene">{scene}</p>}
           <h1 className="clap-title">{title}</h1>
+          {take && <p className="clap-take" aria-live="polite"><span>Scene <b>{take.scene}</b></span><span>Take <b>{take.take}</b></span></p>}
           {children}
         </div>
       </div>

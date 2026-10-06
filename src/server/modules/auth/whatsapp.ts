@@ -16,15 +16,19 @@
  * With none of the required settings set, local development logs the code to the server console instead of sending it.
  * In production an unconfigured provider is an error, never a silent fallback.
  */
-const fromNumber = () => process.env.PINNACLE_FROM || process.env.PINNACLE_WABA_NUMBER || "";
-const phoneId = () => process.env.PINNACLE_WABA_NUMBER_ID || process.env.PINNACLE_WEBA_NUMBER_ID || "";
+// Pasted values often carry a stray space or line break, which in a URL or a header means "wrong credentials" — trim them all.
+const env = (...names: string[]) => names.map((n) => process.env[n]?.trim()).find(Boolean) ?? "";
+const fromNumber = () => env("PINNACLE_FROM", "PINNACLE_WABA_NUMBER");
+const phoneId = () => env("PINNACLE_WABA_NUMBER_ID", "PINNACLE_WEBA_NUMBER_ID");
+const apiKey = () => env("PINNACLE_API_KEY");
+const templateId = () => env("PINNACLE_OTP_TEMPLATE_ID");
 /** The endpoint to POST to: the configured URL, with the phone-number id path added when only the host was given. */
 const endpoint = () => {
-  const base = (process.env.PINNACLE_API_URL ?? "").trim();
+  const base = env("PINNACLE_API_URL");
   if (!base || /\/v\d+\//.test(base) || !phoneId()) return base;
   return `${base.replace(/\/+$/, "")}/v3/${phoneId()}/messages`;
 };
-const configured = () => Boolean(endpoint() && process.env.PINNACLE_API_KEY && (fromNumber() || phoneId()) && process.env.PINNACLE_OTP_TEMPLATE_ID);
+const configured = () => Boolean(endpoint() && apiKey() && (fromNumber() || phoneId()) && templateId());
 const isProd = () => process.env.APP_ENV === "production" || process.env.APP_ENV === "staging" || process.env.NODE_ENV === "production";
 
 /** Whether to offer WhatsApp sign-in: a real provider, or local development. */
@@ -40,7 +44,7 @@ function requestBody(digitsTo: string, code: string): unknown {
   if (style() === "legacy") {
     return {
       from: fromNumber().replace(/\D/g, ""), to: digitsTo, type: "template",
-      message: { templateid: process.env.PINNACLE_OTP_TEMPLATE_ID!, placeholders: [code] },
+      message: { templateid: templateId(), placeholders: [code] },
     };
   }
   const components: unknown[] = [{ type: "body", parameters: [{ type: "text", text: code }] }];
@@ -48,7 +52,7 @@ function requestBody(digitsTo: string, code: string): unknown {
   if (process.env.PINNACLE_OTP_BUTTON === "1") components.push({ type: "button", sub_type: "url", index: "0", parameters: [{ type: "text", text: code }] });
   return {
     messaging_product: "whatsapp", recipient_type: "individual", to: digitsTo, type: "template",
-    template: { name: process.env.PINNACLE_OTP_TEMPLATE_ID!, language: { code: process.env.PINNACLE_OTP_LANGUAGE || "en" }, components },
+    template: { name: templateId(), language: { code: process.env.PINNACLE_OTP_LANGUAGE || "en" }, components },
   };
 }
 
@@ -58,9 +62,12 @@ export async function sendWhatsappOtp(e164: string, code: string): Promise<void>
     console.log(`[dev] WhatsApp OTP for ${e164}: ${code}`);
     return;
   }
-  const res = await fetch(endpoint(), {
+  const url = new URL(endpoint());
+  console.log(JSON.stringify({ level: "info", route: "whatsapp-otp", step: "request", style: style(), host: url.host,
+    path: url.pathname.replace(/\/v(\d+)\/[^/]+\//, "/v$1/<id>/"), idLength: phoneId().length, keyLength: apiKey().length, header: "apikey" }));
+  const res = await fetch(url, {
     method: "POST",
-    headers: { "content-type": "application/json", apikey: process.env.PINNACLE_API_KEY!.trim() },
+    headers: { "content-type": "application/json", apikey: apiKey() },
     body: JSON.stringify(requestBody(e164.replace(/\D/g, ""), code)),
     signal: AbortSignal.timeout(10_000),
   });

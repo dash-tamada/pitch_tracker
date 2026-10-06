@@ -7,6 +7,7 @@ import { unreadCount } from "@/server/modules/notifications/service";
 import { companyBranding } from "@/server/modules/tenancy/company";
 import { LogoutButton } from "@/components/logout-button";
 import { AccountLink, NavLinks } from "@/components/nav-links";
+import { ViewfinderHud } from "@/components/viewfinder-hud";
 
 const NAV: { href: string; label: string; anyOf: Permission[] }[] = [
   { href: "/dashboard", label: "Dashboard", anyOf: ["pitch.view", "pitch.view_all", "analytics.view"] },
@@ -38,7 +39,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const color = brand?.color && /^#[0-9A-Fa-f]{6}$/.test(brand.color) ? brand.color : null;
   const companyName = brand?.name ?? "Pitch Tracker";
   return (
-    <div className="shell">
+    <div className="shell has-vf">
+      <ViewfinderHud />
       {color && <style nonce={nonce}>{`:root{--accent:${color}}`}</style>}
       <nav className="nav" aria-label="Main">
         <div className="brand">

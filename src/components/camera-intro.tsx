@@ -109,16 +109,16 @@ function CameraStage({ rolling, onRecord }: { rolling: boolean; onRecord: () => 
           {/* the calls of a take, one after another (timed in globals.css) */}
           <p className="cam-cues" aria-live="polite">
             {rolling && <>
-              <span className="cue cue-1">Roll sound</span>
-              <span className="cue cue-2">Sound speed</span>
-              <span className="cue cue-3"><i className="cue-dot" aria-hidden="true" />Rolling</span>
+              <span className="cue cue-1">Rolling</span>
+              <span className="cue cue-2">Sound Rolling</span>
+              <span className="cue cue-3"><i className="cue-dot" aria-hidden="true" />Camera Rolling</span>
             </>}
           </p>
         </div>
         <button type="button" className="rec-btn" onClick={onRecord} disabled={rolling} autoFocus
-          aria-label="Record — open the sign-in slate">
+          aria-label="Roll camera — open the sign-in slate">
           <span className="rec-dot" aria-hidden="true" />
-          {rolling ? "Rolling" : "Record"}
+          {rolling ? "Rolling" : "Roll camera"}
         </button>
       </div>
       <div className="cam-flash" aria-hidden="true" />

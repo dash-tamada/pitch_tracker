@@ -1,7 +1,9 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Clapboard, useClap } from "./clapboard";
+import { soundEnabled } from "./film-sound";
+import { announceTake, newTake, saveTake, type Take } from "./viewfinder";
 
 function csrfToken(): string {
   const name = document.cookie.includes("__Host-pt_csrf=") ? "__Host-pt_csrf" : "pt_csrf";
@@ -25,15 +27,15 @@ const URL_ERRORS: Record<string, string> = {
   google_off: "Sign in with Google is not set up yet.",
 };
 
-type Step = "password" | "mfa" | "wa-mobile" | "wa-code" | "wa-choose" | "social";
+type Step = "password" | "mfa" | "wa-mobile" | "wa-code" | "wa-choose" | "social" | "ready";
 interface AccountChoice { userId: string; company: string; name: string; email: string }
 interface SessionReply { mustChangePassword?: boolean; mfaEnrolmentRequired?: boolean; mfaRequired?: boolean; choose?: AccountChoice[]; choiceToken?: string }
 
 const TITLES: Record<Step, string> = {
-  password: "Sign in", mfa: "Two-factor verification", "wa-mobile": "Sign in with WhatsApp", "wa-code": "Enter your code", "wa-choose": "Choose an account", social: "Sign in",
+  password: "Sign in", mfa: "Two-factor verification", "wa-mobile": "Sign in with WhatsApp", "wa-code": "Enter your code", "wa-choose": "Choose an account", social: "Sign in", ready: "Ready to roll",
 };
 
-export function LoginForm({ initialStep, google = false, whatsapp = false, urlError }: { initialStep: "password" | "mfa" | "wa-mobile" | "social"; google?: boolean; whatsapp?: boolean; urlError?: string }) {
+export function LoginForm({ initialStep, google = false, whatsapp = false, urlError }: { initialStep: "password" | "mfa" | "wa-mobile" | "social" | "ready"; google?: boolean; whatsapp?: boolean; urlError?: string }) {
   const [step, setStep] = useState<Step>(initialStep);
   const [error, setError] = useState<string | null>(urlError ? URL_ERRORS[urlError] ?? null : null);
   const [busy, setBusy] = useState(false);
@@ -41,8 +43,16 @@ export function LoginForm({ initialStep, google = false, whatsapp = false, urlEr
   const [accounts, setAccounts] = useState<AccountChoice[]>([]);
   const [choiceToken, setChoiceToken] = useState("");
   const { clapping, clapThen } = useClap();
+  const [shot, setShot] = useState<Take | null>(null);
+
+  // Signed in: the slate gets a fresh scene and take, remembered for the dashboard's camera overlay.
+  useEffect(() => {
+    if (step === "ready" && !shot) { const t = newTake(); saveTake(t); setShot(t); }
+  }, [step, shot]);
 
   function go(next: Step) { setError(null); setStep(next); }
+  /** Everyone, however they signed in, ends up here: the slate is ready and waits for Action. */
+  function ready() { setStep("ready"); setBusy(false); }
 
   /** A reply that created a session: follow the same gates as a password sign-in. */
   function afterSession(r: SessionReply): boolean {
@@ -59,7 +69,7 @@ export function LoginForm({ initialStep, google = false, whatsapp = false, urlEr
     try {
       const r: SessionReply = await post("/api/v1/auth/otp/choose", { choiceToken, userId });
       if (afterSession(r)) return;
-      clapThen("/dashboard");
+      ready();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
       setBusy(false);
@@ -70,11 +80,18 @@ export function LoginForm({ initialStep, google = false, whatsapp = false, urlEr
     e.preventDefault();
     setError(null);
     setBusy(true);
+    if (step === "ready") {
+      // Action! The clap lands, the take is called, then the dashboard opens.
+      if (shot) announceTake(shot.take, soundEnabled());
+      clapThen("/dashboard"); // fixed internal path — no open redirect
+      return;
+    }
     const form = new FormData(e.currentTarget);
     try {
       if (step === "password") {
         const r: SessionReply = await post("/api/v1/auth/login", { email: form.get("email"), password: form.get("password") });
         if (afterSession(r)) return;
+        ready(); return;
       } else if (step === "wa-mobile") {
         const m = String(form.get("mobile") ?? "");
         await post("/api/v1/auth/otp/request", { mobile: m });
@@ -83,10 +100,11 @@ export function LoginForm({ initialStep, google = false, whatsapp = false, urlEr
         const r: SessionReply = await post("/api/v1/auth/otp/verify", { mobile, code: form.get("code") });
         if (r.choose && r.choiceToken) { setAccounts(r.choose); setChoiceToken(r.choiceToken); setStep("wa-choose"); setBusy(false); return; }
         if (afterSession(r)) return;
+        ready(); return;
       } else {
         await post("/api/v1/auth/mfa/verify", { code: form.get("code") });
+        ready(); return;
       }
-      clapThen("/dashboard"); // fixed internal path — no open redirect
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
       setBusy(false);
@@ -96,8 +114,9 @@ export function LoginForm({ initialStep, google = false, whatsapp = false, urlEr
   return (
     <Clapboard
       clapping={clapping}
-      scene={step === "password" ? undefined : step === "mfa" ? "Second take" : "WhatsApp"}
+      scene={step === "password" ? undefined : step === "mfa" ? "Second take" : step === "ready" ? "Lights. Camera." : "WhatsApp"}
       title={TITLES[step]}
+      take={step === "ready" && shot ? { scene: shot.scene, take: shot.take } : undefined}
     >
       <form onSubmit={onSubmit} noValidate>
         {error && <p className="error" role="alert">{error}</p>}
@@ -122,6 +141,7 @@ export function LoginForm({ initialStep, google = false, whatsapp = false, urlEr
             <input name="code" inputMode="numeric" autoComplete="one-time-code" pattern="\d{6}" maxLength={6} required />
           </label>
         )}
+        {step === "ready" && <p className="subtle">You are signed in. Press Action to roll the first take.</p>}
         {step === "wa-choose" ? (
           <>
             <p className="subtle">This number is linked to more than one account. Which one do you want to sign in to?</p>

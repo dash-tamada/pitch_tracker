@@ -921,29 +921,7 @@ table.data code.tag-code, .tag-code {
 .dash .section h2 { font-size: 17px; border-bottom: 1px solid var(--d-line); }
 .dash .grid-2 { gap: 14px; }
 
-/* legends */
-.legends { margin: 4px 0 18px; }
-.legends-head h2 { font-size: 20px; margin: 0 0 2px; }
-.legends-head .subtle { margin-bottom: 12px; }
-.legend-row { list-style: none; margin: 0; padding: 4px 2px 14px; display: flex; gap: 14px; overflow-x: auto; scroll-snap-type: x proximity; }
-.legend { flex: 0 0 188px; scroll-snap-align: start; background: #fff; border: 1px solid var(--d-line); border-radius: 22px; overflow: hidden; box-shadow: 0 14px 28px -24px rgba(20, 19, 15, .5); transition: transform .22s var(--ease-pop), box-shadow .22s; }
-.legend:hover { transform: translateY(-5px); box-shadow: 0 24px 36px -22px rgba(239, 75, 35, .4); }
-.legend-photo { aspect-ratio: 4 / 5; display: grid; place-items: center; overflow: hidden; }
-.legend-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.legend-mono { font-family: var(--serif); font-style: italic; font-size: 64px; color: rgba(255, 255, 255, .92); text-shadow: 0 4px 18px rgba(0, 0, 0, .25); }
-.tone-1 .legend-photo { background: linear-gradient(150deg, #ff7a45, #c73a15); }
-.tone-2 .legend-photo { background: linear-gradient(150deg, #7c6bd6, #3d2f8f); }
-.tone-3 .legend-photo { background: linear-gradient(150deg, #e0568a, #8f1f4f); }
-.tone-4 .legend-photo { background: linear-gradient(150deg, #2fa38f, #146253); }
-.tone-5 .legend-photo { background: linear-gradient(150deg, #e0a526, #96620a); }
-.tone-6 .legend-photo { background: linear-gradient(150deg, #3f8be0, #1b4a8f); }
-.legend-body { padding: 12px 14px 15px; }
-.legend-tag { font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--orange-deep); }
-.legend-name { font-weight: 700; font-size: 15px; margin: 3px 0 4px; }
-.legend-film { font-size: 12.5px; color: var(--ink-2); }
-.legend-film span { color: var(--muted); }
-
-@media (prefers-reduced-motion: reduce) { .dust span { animation: none; opacity: 0; } .legend, .pill, .dash .card { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .dust span { animation: none; opacity: 0; } .pill, .dash .card { transition: none; } }
 
 /* sign in with Google, under the clapper-board form */
 .or-rule { display: flex; align-items: center; gap: 10px; margin: 14px 0 10px; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .14em; }

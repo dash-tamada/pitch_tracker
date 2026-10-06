@@ -1194,26 +1194,26 @@ table.data code.tag-code, .tag-code {
 .main:has(.dash) .notice { margin-top: 90px; }
 .dash { color: #f3ece0; }
 
-.hero { position: relative; isolation: isolate; overflow: hidden; min-height: 660px; margin: 0 calc(-1 * var(--pad)) 30px; padding: 168px var(--pad) 72px; border-radius: 0; background:
+.hero { position: relative; isolation: isolate; overflow: hidden; min-height: 600px; margin: 0 calc(-1 * var(--pad)) 30px; padding: 130px var(--pad) 54px; border-radius: 0; background:
   radial-gradient(52% 70% at 78% 38%, rgba(255, 140, 50, .22), transparent 68%),
   radial-gradient(40% 50% at 8% 40%, rgba(255, 150, 60, .1), transparent 70%), #0b0807; color: #fff; }
 .hero::before, .hero::after { display: block; content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; }
 .hero::before { background: linear-gradient(90deg, #0b0807 0, rgba(11, 8, 7, .78) 34%, rgba(11, 8, 7, 0) 62%); }
 .hero::after { top: auto; height: 150px; background: linear-gradient(180deg, rgba(11, 8, 7, 0), #0b0807); }
-.hero-art { position: absolute; top: 0; right: 0; bottom: 0; width: min(64%, 920px); z-index: -2; background: url("/img/hero-art.jpg") right center / cover no-repeat; -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 38%); mask-image: linear-gradient(90deg, transparent 0, #000 38%); }
-.hero-copy { position: relative; max-width: 640px; }
+.hero-art { position: absolute; top: 0; right: 0; bottom: 0; width: min(64%, 920px); z-index: -2; background: url("/img/hero-art.jpg") right bottom / contain no-repeat; -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 18%); mask-image: linear-gradient(90deg, transparent 0, #000 18%); }
+.hero-copy { position: relative; max-width: 600px; }
 .hero-eyebrow { margin: 0 0 22px; padding: 0; border-radius: 0; background: none; display: flex; align-items: center; gap: 16px; font-size: 14px; font-weight: 600; letter-spacing: .42em; text-transform: uppercase; color: rgba(255, 255, 255, .9); animation: rise .45s ease-out .05s both; }
 .hero-eyebrow::before, .hero-eyebrow::after { content: ""; width: 28px; height: 2px; background: var(--orange); }
 .hero-eyebrow::after { width: 22px; }
-.dash .hero-title { margin: 0 0 24px; max-width: none; font-family: "Archivo", "Inter", system-ui, sans-serif; font-size: clamp(46px, 6.4vw, 92px); font-weight: 800; line-height: 1.02; letter-spacing: -.03em; text-transform: none; color: #fff; animation: rise .6s cubic-bezier(.16, .84, .3, 1) .12s both; text-shadow: 0 4px 28px rgba(0, 0, 0, .55); }
+.dash .hero-title { margin: 0 0 24px; max-width: none; font-family: "Archivo", "Inter", system-ui, sans-serif; font-size: clamp(40px, 4.6vw, 70px); font-weight: 800; line-height: 1.02; letter-spacing: -.03em; text-transform: none; color: #fff; animation: rise .6s cubic-bezier(.16, .84, .3, 1) .12s both; text-shadow: 0 4px 28px rgba(0, 0, 0, .55); }
 .hl { display: block; }
 .hero-brush { position: relative; display: block; width: max-content; font-family: var(--serif); font-style: italic; font-weight: 400; font-size: 1.12em; letter-spacing: -.02em; color: #f0541a; -webkit-text-stroke: 1.6px #f0541a; padding-bottom: .1em; }
 .hero-stroke { position: absolute; left: -2%; right: -4%; bottom: -.04em; width: 106%; height: .24em; overflow: visible; }
 .hero-stroke path { fill: none; stroke: #f0541a; stroke-width: 4.5; stroke-linecap: round; }
 .hero-stroke path + path { stroke-width: 2.4; opacity: .7; }
-.dash .hero-sub { margin: 0; max-width: 46ch; font-size: clamp(16px, 1.5vw, 19.5px); line-height: 1.55; color: rgba(255, 255, 255, .88); animation: rise .5s ease-out .26s both; }
-.hero-cta { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 38px; animation: fade .6s ease-out .36s both; }
-.pill { display: inline-flex; align-items: center; gap: 14px; padding: 19px 34px; border-radius: 999px; font-size: 18px; font-weight: 700; text-decoration: none; transition: transform .18s var(--ease-pop), box-shadow .18s; }
+.dash .hero-sub { margin: 0; max-width: 46ch; font-size: clamp(15px, 1.2vw, 18px); line-height: 1.55; color: rgba(255, 255, 255, .88); animation: rise .5s ease-out .26s both; }
+.hero-cta { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 30px; animation: fade .6s ease-out .36s both; }
+.pill { display: inline-flex; align-items: center; gap: 12px; padding: 16px 30px; border-radius: 999px; font-size: 17px; font-weight: 700; text-decoration: none; transition: transform .18s var(--ease-pop), box-shadow .18s; }
 .pill:hover { transform: translateY(-2px); }
 .pill-fire { color: #fff; background: linear-gradient(180deg, #ff8a34, #f0541a); box-shadow: 0 16px 34px -14px rgba(239, 75, 35, .95), inset 0 1px 0 rgba(255, 255, 255, .4); }
 .pill-ghost { color: #fff; background: rgba(255, 255, 255, .05); border: 1.5px solid rgba(255, 255, 255, .38); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }

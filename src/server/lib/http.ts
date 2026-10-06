@@ -20,7 +20,7 @@ export function requestContext(req: NextRequest): RequestContext {
   return { ip, userAgent: req.headers.get("user-agent"), requestId: randomUUID() };
 }
 
-function checkCsrf(req: NextRequest): void {
+export function checkCsrf(req: NextRequest): void {
   if (req.method === "GET" || req.method === "HEAD") return;
   const origin = req.headers.get("origin");
   const expected = process.env.APP_ORIGIN;

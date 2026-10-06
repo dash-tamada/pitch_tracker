@@ -98,8 +98,7 @@ export async function requestInvitationOtp(platformDb: Db, raw: unknown, ctx: Re
   const { token, mobile } = parseInput(inviteOtpRequestSchema, raw);
   const e164 = validMobile(mobile);
   const inv = await liveInvitation(platformDb, token);
-  const code = await issueCode(platformDb, inviteScope(inv.id, e164), ctx, now);
-  await deliverCode(e164, code);
+  await deliverCode(platformDb, e164, await issueCode(platformDb, inviteScope(inv.id, e164), ctx, now));
   await writeAudit(platformDb, { companyId: inv.companyId, actorId: null, action: "auth.invitation_otp_requested", resourceType: "user", resourceId: inv.userId }, ctx);
   return { sent: true as const };
 }

@@ -23,7 +23,7 @@ import { sendWhatsappOtp } from "./whatsapp";
 export const OTP_TTL_MS = 5 * 60 * 1000;
 export const OTP_MAX_ATTEMPTS = 5;
 export const OTP_RESEND_COOLDOWN_MS = 30 * 1000;
-const PER_SCOPE_PER_HOUR = 5;
+const PER_SCOPE_PER_HOUR = 8;
 const PER_IP_PER_HOUR = 20;
 const HOUR = 60 * 60 * 1000;
 
@@ -49,12 +49,16 @@ export function validMobile(raw: string): string {
  * rate-limit footprint) is written whether or not anything is delivered, so callers can keep unknown numbers
  * indistinguishable from known ones.
  */
-export async function issueCode(db: Db, scopeKey: string, ctx: RequestContext, now: Date): Promise<string> {
+export async function issueCode(db: Db, scopeKey: string, ctx: RequestContext, now: Date): Promise<IssuedCode> {
   const scopeHash = hashIdentifier(scopeKey);
   const ip = ctx.ip ?? null;
   const since = new Date(now.getTime() - HOUR);
-  const [{ m } = { m: 0 }] = await db.select({ m: sql<number>`count(*)::int` }).from(loginOtps).where(and(eq(loginOtps.mobileHash, scopeHash), gt(loginOtps.createdAt, since)));
-  if (m >= PER_SCOPE_PER_HOUR) throw new AppError("RATE_LIMITED", "Too many codes requested. Please wait and try again.");
+  const [{ m, oldest } = { m: 0, oldest: null as Date | null }] = await db.select({ m: sql<number>`count(*)::int`, oldest: sql<Date | null>`min(${loginOtps.createdAt})` })
+    .from(loginOtps).where(and(eq(loginOtps.mobileHash, scopeHash), gt(loginOtps.createdAt, since)));
+  if (m >= PER_SCOPE_PER_HOUR) {
+    const mins = oldest ? Math.max(1, Math.ceil((new Date(oldest).getTime() + HOUR - now.getTime()) / 60_000)) : 60;
+    throw new AppError("RATE_LIMITED", `Too many codes requested for this number. Please try again in about ${mins} minute${mins === 1 ? "" : "s"}.`);
+  }
   if (ip) {
     const [{ n } = { n: 0 }] = await db.select({ n: sql<number>`count(*)::int` }).from(loginOtps).where(and(eq(loginOtps.ip, ip), gt(loginOtps.createdAt, since)));
     if (n >= PER_IP_PER_HOUR) throw new AppError("RATE_LIMITED", "Too many attempts. Please wait and try again.");
@@ -65,13 +69,21 @@ export async function issueCode(db: Db, scopeKey: string, ctx: RequestContext, n
   const id = crypto.randomUUID();
   const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
   await db.insert(loginOtps).values({ id, mobileHash: scopeHash, codeHash: codeHash(id, code), ip, expiresAt: new Date(now.getTime() + OTP_TTL_MS) });
-  return code;
+  return { id, code };
 }
 
-/** Delivers a code, logging (never throwing) on failure so the reply to the caller stays the same either way. */
-export async function deliverCode(e164: string, code: string): Promise<void> {
-  try { await sendWhatsappOtp(e164, code); }
-  catch (err) { console.error(JSON.stringify({ level: "error", route: "whatsapp-otp", message: err instanceof Error ? err.message.slice(0, 200) : "send failed" })); }
+export interface IssuedCode { id: string; code: string }
+
+/**
+ * Delivers a code, logging (never throwing) on failure so the reply to the caller stays the same either way. A code that
+ * could not be sent is discarded, so a provider outage or a misconfiguration does not use up the person's hourly allowance.
+ */
+export async function deliverCode(db: Db, e164: string, issued: IssuedCode): Promise<void> {
+  try { await sendWhatsappOtp(e164, issued.code); }
+  catch (err) {
+    console.error(JSON.stringify({ level: "error", route: "whatsapp-otp", message: err instanceof Error ? err.message.slice(0, 200) : "send failed" }));
+    await db.delete(loginOtps).where(eq(loginOtps.id, issued.id)).catch(() => undefined);
+  }
 }
 
 /**
@@ -106,10 +118,10 @@ async function eligibleAccounts(db: Db, e164: string) {
 export async function requestOtp(db: Db, raw: unknown, ctx: RequestContext = {}, now = new Date()): Promise<{ sent: true }> {
   const { mobile } = parseInput(mobileSchema, raw);
   const e164 = validMobile(mobile);
-  const code = await issueCode(db, e164, ctx, now);
+  const issued = await issueCode(db, e164, ctx, now);
   const accounts = await eligibleAccounts(db, e164);
   if (accounts.length > 0) {
-    await deliverCode(e164, code);
+    await deliverCode(db, e164, issued);
     await writeAudit(db, { companyId: accounts.length === 1 ? accounts[0]!.u.companyId : null, actorId: null, action: "auth.otp_requested", resourceType: "auth" }, ctx);
   }
   return { sent: true };

@@ -1200,7 +1200,11 @@ table.data code.tag-code, .tag-code {
 .hero::before, .hero::after { display: block; content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; }
 .hero::before { background: linear-gradient(90deg, #0b0807 0, rgba(11, 8, 7, .78) 34%, rgba(11, 8, 7, 0) 62%); }
 .hero::after { top: auto; height: 150px; background: linear-gradient(180deg, rgba(11, 8, 7, 0), #0b0807); }
-.hero-art { position: absolute; top: 0; right: 0; bottom: 0; width: min(64%, 920px); z-index: -2; background: url("/img/hero-art.jpg") right bottom / contain no-repeat; -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 18%); mask-image: linear-gradient(90deg, transparent 0, #000 18%); }
+.hero-art { position: absolute; top: 0; right: 0; bottom: 0; aspect-ratio: 819 / 760; max-width: 72%; z-index: -2; background: url("/img/hero-art.jpg") right bottom / 100% 100% no-repeat;
+  /* the box is exactly the picture's shape, so these fades land on the picture's own edges and it melts into the page */
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 38%), linear-gradient(180deg, transparent 0, #000 16%);
+  mask-image: linear-gradient(90deg, transparent 0, #000 38%), linear-gradient(180deg, transparent 0, #000 16%);
+  -webkit-mask-composite: source-in; mask-composite: intersect; }
 .hero-copy { position: relative; max-width: 520px; }
 .hero-eyebrow { margin: 0 0 16px; padding: 0; border-radius: 0; background: none; display: flex; align-items: center; gap: 16px; font-size: 12px; font-weight: 600; letter-spacing: .38em; text-transform: uppercase; color: rgba(255, 255, 255, .9); animation: rise .45s ease-out .05s both; }
 .hero-eyebrow::before, .hero-eyebrow::after { content: ""; width: 28px; height: 2px; background: var(--orange); }
@@ -1246,7 +1250,7 @@ table.data code.tag-code, .tag-code {
   .shell { grid-template-columns: 1fr; }
   .main:has(.dash) .topbar { position: relative; top: auto; left: auto; right: auto; padding-top: 18px; }
   .hero { min-height: 0; padding-top: 40px; margin-top: 0; }
-  .hero-art { width: 100%; opacity: .45; }
+  .hero-art { width: 100%; max-width: none; aspect-ratio: auto; opacity: .45; background-size: cover; }
   .main:has(.dash) .notice { margin-top: 16px; }
   .topbar { flex-wrap: wrap; }
   .search-go { padding: 0 18px; }

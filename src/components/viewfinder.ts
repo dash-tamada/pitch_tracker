@@ -46,16 +46,22 @@ export function loadTake(): Take | null {
   try { const v = window.sessionStorage.getItem(KEY); return v ? (JSON.parse(v) as Take) : null; } catch { return null; }
 }
 
-/** Says "Take 42" through the browser's speech engine, when there is one and sound is on. */
-export function announceTake(take: string, soundOn: boolean): void {
+/** Says a line through the browser's speech engine, when there is one and sound is on. */
+export function speak(text: string, soundOn: boolean): void {
   try {
     if (!soundOn || !("speechSynthesis" in window)) return;
-    const u = new SpeechSynthesisUtterance(`Take ${Number(take)}`);
+    const u = new SpeechSynthesisUtterance(text);
     u.rate = 0.95; u.pitch = 0.8; u.volume = 0.9;
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(u);
-  } catch { /* no speech: the clap alone is fine */ }
+  } catch { /* no speech: the visuals are enough */ }
 }
+
+/** "Take 42". */
+export const announceTake = (take: string, soundOn: boolean) => speak(`Take ${Number(take)}`, soundOn);
+
+/** Fired when the person calls "Cut": the camera overlay stops recording. */
+export const CUT_EVENT = "pt:cut";
 
 /** hh:mm:ss:ff from a running frame count. */
 export function timecode(startSeconds: number, frames: number, fps: number): string {

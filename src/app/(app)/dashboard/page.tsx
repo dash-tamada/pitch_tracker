@@ -8,7 +8,6 @@ import { Funnel, GroupedMonthChart, HBarChart } from "@/components/charts";
 import { ACTION_LABEL } from "@/components/labels";
 import { Empty, fmtDate, StageBadge, Stat } from "@/components/ui";
 import { HeroBanner } from "@/components/hero-banner";
-import { Legends } from "@/components/legends";
 import { companyBranding } from "@/server/modules/tenancy/company";
 
 export default async function DashboardPage() {
@@ -55,8 +54,6 @@ export default async function DashboardPage() {
           )}
         </div>
       </div>
-
-      <Legends />
 
       <Funnel steps={f} />
 

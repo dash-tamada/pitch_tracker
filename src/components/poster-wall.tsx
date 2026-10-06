@@ -67,6 +67,30 @@ function Row({ posters, n }: { posters: Poster[]; n: number }) {
   );
 }
 
+/**
+ * The same classic posters as a still, dimmed backdrop for the signed-in app: three tilted rows, no animation, drawn once
+ * behind every page. The shade is heavy so the posters read as texture and never fight the content.
+ */
+export function PosterBackdrop() {
+  const rows = [0, 11, 22].map((by) => rotate(by).concat(rotate(by + 5)).slice(0, 16));
+  return (
+    <div className="pw pw-app" aria-hidden="true">
+      <div className="pw-tilt">
+        {rows.map((posters, i) => (
+          <div key={i} className={`pw-row pw-row-${i + 1}`}>
+            <div className="pw-track">
+              {posters.map((p, k) => (
+                <img key={`${k}-${p.slug}`} className="pw-poster" src={`/img/posters/${p.slug}.jpg`} width={p.w} height={p.h} alt="" decoding="async" loading="lazy" />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="pw-shade" />
+    </div>
+  );
+}
+
 export function PosterWall() {
   return (
     <div className="pw" aria-hidden="true">

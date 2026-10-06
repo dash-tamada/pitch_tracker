@@ -9,6 +9,7 @@ import { unreadCount } from "@/server/modules/notifications/service";
 import { companyBranding } from "@/server/modules/tenancy/company";
 import { LogoutButton } from "@/components/logout-button";
 import { NavLinks } from "@/components/nav-links";
+import { PosterBackdrop } from "@/components/poster-wall";
 import { ViewfinderHud } from "@/components/viewfinder-hud";
 
 const NAV: { href: string; label: string; anyOf: Permission[] }[] = [
@@ -36,7 +37,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     unreadCount(db, actor), companyBranding(db),
     db.select({ name: users.fullName }).from(users).where(eq(users.id, actor.userId)).then((r) => r[0]),
   ]);
-  const initial = (me?.name ?? "U").trim().charAt(0).toUpperCase() || "U";
+  const first = (me?.name ?? "").trim().split(/\s+/)[0] ?? "";
+  const initial = first.charAt(0).toUpperCase() || "U";
   // Points at a route handler that mints a fresh signed URL and redirects on each request, rather than
   // embedding one resolved at page-render time — see the logo route's own comment for why.
   const hasLogo = Boolean(brand?.logoKey);
@@ -46,6 +48,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const companyName = brand?.name ?? "Pitch Tracker";
   return (
     <div className="shell has-vf">
+      <PosterBackdrop />
       <ViewfinderHud />
       {color && <style nonce={nonce}>{`:root{--accent:${color}}`}</style>}
       <nav className="nav" aria-label="Main">
@@ -57,7 +60,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <span className="brand-text"><span className="name">{companyName}</span><small>Pitch Tracker · <span className="italic-accent">Story Pipeline</span></small></span>
         </div>
         <NavLinks items={items} badges={{ "/notifications": unread }} />
-        <div className="nav-tag">
+        <div className="nav-footer">
           <svg width="30" height="30" viewBox="0 0 32 32" aria-hidden="true"><rect x="3" y="12" width="26" height="16" rx="2" fill="#ef4b23" /><path d="M3 12 29 6l1.4 4.6L4.4 16.6 3 12Z" fill="#f7f1e4" /><path d="m9 8.8 3.4 3.8M15.8 7.2l3.4 3.8M22.6 5.7 26 9.5" stroke="#14130f" strokeWidth="2.4" /></svg>
           <span>Good stories<br />travel far</span>
         </div>
@@ -74,11 +77,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 10a6 6 0 1 1 12 0c0 4 1.5 5.5 1.5 5.5h-15S6 14 6 10Z" /><path d="M10 19a2 2 0 0 0 4 0" /></svg>
               {unread > 0 && <span className="bell-dot" />}
             </Link>
-            <div className="user-chip">
-              <Link className="avatar" href="/account" aria-label="My account">{initial}</Link>
-              <LogoutButton />
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
-            </div>
+            <Link className="profile-chip" href="/account" aria-label="My profile">
+              <span className="avatar">{initial}</span>
+              {first && <span className="profile-name">{first}</span>}
+            </Link>
+            <LogoutButton />
           </div>
         </div>
         {brand && !brand.setupCompletedAt && actor.permissions.has("company.manage") && (

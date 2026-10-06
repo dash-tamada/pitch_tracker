@@ -1196,14 +1196,15 @@ table.data code.tag-code, .tag-code {
 
 .hero { position: relative; isolation: isolate; overflow: hidden; min-height: 500px; margin: 0 calc(-1 * var(--pad)) 26px; padding: 108px var(--pad) 40px; border-radius: 0; background:
   radial-gradient(52% 70% at 78% 38%, rgba(255, 140, 50, .22), transparent 68%),
-  radial-gradient(40% 50% at 8% 40%, rgba(255, 150, 60, .1), transparent 70%), #0b0807; color: #fff; }
+  radial-gradient(40% 50% at 8% 40%, rgba(255, 150, 60, .1), transparent 70%),
+  linear-gradient(180deg, #0b0807 0, #0b0807 52%, rgba(11, 8, 7, 0) 100%); color: #fff; }
 .hero::before, .hero::after { display: block; content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; }
 .hero::before { background: linear-gradient(90deg, #0b0807 0, rgba(11, 8, 7, .78) 34%, rgba(11, 8, 7, 0) 62%); }
-.hero::after { top: auto; height: 150px; background: linear-gradient(180deg, rgba(11, 8, 7, 0), #0b0807); }
+.hero::after { display: none; }
 .hero-art { position: absolute; top: 0; right: 0; bottom: 0; aspect-ratio: 819 / 760; max-width: 72%; z-index: -2; background: url("/img/hero-art.jpg") right bottom / 100% 100% no-repeat;
   /* the box is exactly the picture's shape, so these fades land on the picture's own edges and it melts into the page */
-  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 38%), linear-gradient(180deg, transparent 0, #000 16%);
-  mask-image: linear-gradient(90deg, transparent 0, #000 38%), linear-gradient(180deg, transparent 0, #000 16%);
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 38%), linear-gradient(180deg, transparent 0, #000 16%, #000 70%, transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0, #000 38%), linear-gradient(180deg, transparent 0, #000 16%, #000 70%, transparent 100%);
   -webkit-mask-composite: source-in; mask-composite: intersect; }
 .hero-copy { position: relative; max-width: 520px; }
 .hero-eyebrow { margin: 0 0 16px; padding: 0; border-radius: 0; background: none; display: flex; align-items: center; gap: 16px; font-size: 12px; font-weight: 600; letter-spacing: .38em; text-transform: uppercase; color: rgba(255, 255, 255, .9); animation: rise .45s ease-out .05s both; }
@@ -1222,6 +1223,7 @@ table.data code.tag-code, .tag-code {
 .pill-fire { color: #fff; background: linear-gradient(180deg, #ff8a34, #f0541a); box-shadow: 0 16px 34px -14px rgba(239, 75, 35, .95), inset 0 1px 0 rgba(255, 255, 255, .4); }
 .pill-ghost { color: #fff; background: rgba(255, 255, 255, .05); border: 1.5px solid rgba(255, 255, 255, .38); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
 .pill-ghost svg { color: var(--orange-2); }
+.dash .pill-fire, .dash .pill-ghost { color: #fff; }
 
 /* embers drifting left → right behind the headline */
 .dust span { background: #ffb067; box-shadow: 0 0 10px 2px rgba(255, 150, 70, .5); }

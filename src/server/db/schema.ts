@@ -141,6 +141,25 @@ export const loginAttempts = pgTable("login_attempts", {
   index("login_attempts_email_time_idx").on(t.emailHash, t.createdAt),
 ]);
 
+/** One-time codes for signing in by mobile number over WhatsApp. Hashes only — see drizzle/0011_login_otps.sql. */
+export const loginOtps = pgTable("login_otps", {
+  id: id(),
+  mobileHash: bytea("mobile_hash").notNull(),
+  codeHash: bytea("code_hash").notNull(),
+  attempts: integer("attempts").notNull().default(0),
+  ip: inet("ip"),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  verifiedAt: timestamp("verified_at", { withTimezone: true }),
+  choiceTokenHash: bytea("choice_token_hash"),
+  choiceExpiresAt: timestamp("choice_expires_at", { withTimezone: true }),
+  consumedAt: timestamp("consumed_at", { withTimezone: true }),
+  createdAt: createdAt(),
+}, (t) => [
+  index("login_otps_mobile_time_idx").on(t.mobileHash, t.createdAt),
+  index("login_otps_ip_time_idx").on(t.ip, t.createdAt),
+  uniqueIndex("login_otps_choice_uq").on(t.choiceTokenHash).where(sql`${t.choiceTokenHash} IS NOT NULL`),
+]);
+
 export const roles = pgTable("roles", {
   companyId: companyId(),
   id: id(),

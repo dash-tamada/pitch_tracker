@@ -1,13 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { DocumentPreview } from "./document-preview";
 
 type ViewData = { url: string; mime: string; filename: string };
 
 /**
- * Opens the document as an elevated card in the same window (not a separate browser popup window) — a modal
- * overlay with a layered drop-shadow for depth, sized to the viewport. Data loads client-side from the /view
+ * Opens the document as a glass popup in the same window (not a separate browser popup window): a frosted panel over
+ * a blurred, dimmed page, sized to the viewport. It is drawn straight on <body> through a portal — a panel with a
+ * backdrop-filter or transform would otherwise become the containing block of a "fixed" overlay and trap it inside the card. Data loads client-side from the /view
  * API (same access checks and logging as Download) so the modal can open instantly without a page navigation.
  *
  * `viewUrl`/`newTabHref` default to the staff-session endpoints; the creator portal passes its own
@@ -50,18 +52,19 @@ export function DocumentViewButton({ versionId, label = "View", viewUrl, newTabH
   return (
     <>
       <button type="button" className="btn-secondary" onClick={openModal}>{label}</button>
-      {open && (
+      {open && createPortal(
         <div className="doc-modal-backdrop" onClick={close}>
           <div className="doc-modal-card" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label={data?.filename ?? "Document preview"}>
             <button type="button" className="doc-modal-close" onClick={close} aria-label="Close preview">×</button>
-            {loading && <p className="doc-preview-status" style={{ color: "#efe9f3", textAlign: "center", paddingTop: 40 }}>Loading…</p>}
-            {error && <p className="doc-preview-status" style={{ color: "#efe9f3", textAlign: "center", paddingTop: 40 }}>{error}</p>}
+            {loading && <p className="doc-preview-status doc-modal-status">Loading…</p>}
+            {error && <p className="doc-preview-status doc-modal-status">{error}</p>}
             {/* The staff full-page preview route only understands staff-session document ids — default to it
                 only when this button is also using the default (staff) viewUrl; a caller with a custom
                 viewUrl (the portal) gets no "Open in new tab" link unless it passes its own newTabHref. */}
             {data && <DocumentPreview url={data.url} mime={data.mime} filename={data.filename} newTabHref={newTabHref ?? (viewUrl ? undefined : `/documents/${versionId}/preview`)} />}
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   );

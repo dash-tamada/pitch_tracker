@@ -1309,3 +1309,28 @@ table.data code.tag-code, .tag-code {
   .topbar .head-actions { width: 100%; justify-content: flex-end; }
 }
 .pill svg { width: 17px; height: 17px; flex: none; }
+
+/* ═══ document viewer: a frosted-glass popup over a blurred page ═══ */
+.doc-modal-backdrop { background: rgba(8, 6, 5, .5); -webkit-backdrop-filter: blur(14px) saturate(1.1); backdrop-filter: blur(14px) saturate(1.1); animation: fade .22s ease-out both; }
+.doc-modal-card {
+  width: min(1120px, 100%); height: min(88vh, 940px); border-radius: 24px;
+  background: linear-gradient(160deg, rgba(255, 255, 255, .13), rgba(255, 255, 255, .04) 40%, rgba(255, 255, 255, .07));
+  -webkit-backdrop-filter: blur(26px) saturate(1.3); backdrop-filter: blur(26px) saturate(1.3);
+  border: 1px solid rgba(255, 255, 255, .22);
+  box-shadow: 0 40px 90px -20px rgba(0, 0, 0, .85), inset 0 1px 0 rgba(255, 255, 255, .28), inset 0 0 0 1px rgba(255, 255, 255, .04);
+  animation: doc-glass-in .28s cubic-bezier(.16, .84, .3, 1) both;
+}
+@keyframes doc-glass-in { from { opacity: 0; transform: translateY(14px) scale(.97); } to { opacity: 1; transform: none; } }
+.doc-modal-close { top: 14px; right: 14px; width: 36px; height: 36px; font-size: 22px; color: #fff; background: rgba(255, 255, 255, .14); border: 1px solid rgba(255, 255, 255, .3); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); transition: background .16s, transform .18s var(--ease-pop); }
+.doc-modal-close:hover { background: var(--orange); transform: rotate(90deg); }
+.doc-modal-card .doc-preview { background: transparent; color: #f3ece0; }
+.doc-modal-card .doc-preview-bar { padding: 14px 64px 14px 20px; background: rgba(255, 255, 255, .06); border-bottom: 1px solid rgba(255, 255, 255, .14); }
+.doc-modal-card .doc-preview-bar .name { color: #fff; font-weight: 600; font-size: 14px; }
+.doc-modal-card .doc-preview-bar button { background: rgba(255, 255, 255, .1); border-color: rgba(255, 255, 255, .22); color: #fff; border-radius: 999px; padding: 6px 14px; }
+.doc-modal-card .doc-preview-bar button:hover:not(:disabled) { background: rgba(255, 255, 255, .2); }
+.doc-modal-card .doc-preview-bar a { color: #ffb27a; }
+.doc-modal-card .doc-preview-body { background: rgba(0, 0, 0, .18); padding: 22px; }
+.doc-modal-card .doc-preview-body canvas, .doc-modal-card .doc-preview-body img { border-radius: 10px; box-shadow: 0 18px 44px -14px rgba(0, 0, 0, .75); }
+.doc-modal-status { padding-top: 48px; text-align: center; color: #efe9f3; }
+@media (max-width: 700px) { .doc-modal-card { width: 100%; height: 100%; border-radius: 0; } .doc-modal-backdrop { padding: 0; } }
+@media (prefers-reduced-motion: reduce) { .doc-modal-card, .doc-modal-backdrop { animation: none; } }

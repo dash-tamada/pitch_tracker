@@ -2,10 +2,11 @@
  * Sends the sign-in code over WhatsApp through Pinnacle (Pinbot) using an approved authentication template.
  *
  * Settings (all required in production):
- *   PINNACLE_API_URL           the "send message" endpoint from the Pinnacle console. For the Meta-style API
- *                              (https://…/v3/<phone-number-id>/messages) the phone-number id is part of the URL.
+ *   PINNACLE_API_URL           either the full endpoint (https://…/v3/<phone-number-id>/messages) or just the host
+ *                              (https://partnersv1.pinbot.ai), in which case /v3/<PINNACLE_WABA_NUMBER_ID>/messages is added.
  *   PINNACLE_API_KEY           sent in the `apikey` header
- *   PINNACLE_FROM              the registered WhatsApp business number (legacy style only)
+ *   PINNACLE_WABA_NUMBER_ID    the WhatsApp phone-number id (also read as PINNACLE_WEBA_NUMBER_ID, a common misspelling)
+ *   PINNACLE_WABA_NUMBER       the registered WhatsApp business number; PINNACLE_FROM is accepted as well
  *   PINNACLE_OTP_TEMPLATE_ID   the approved template: its NAME for the Meta style, its id for the legacy style
  * Optional:
  *   PINNACLE_API_STYLE         "meta" or "legacy". Default: "meta" when the URL contains /v<number>/, else "legacy".
@@ -15,7 +16,15 @@
  * With none of the required settings set, local development logs the code to the server console instead of sending it.
  * In production an unconfigured provider is an error, never a silent fallback.
  */
-const configured = () => Boolean(process.env.PINNACLE_API_URL && process.env.PINNACLE_API_KEY && process.env.PINNACLE_FROM && process.env.PINNACLE_OTP_TEMPLATE_ID);
+const fromNumber = () => process.env.PINNACLE_FROM || process.env.PINNACLE_WABA_NUMBER || "";
+const phoneId = () => process.env.PINNACLE_WABA_NUMBER_ID || process.env.PINNACLE_WEBA_NUMBER_ID || "";
+/** The endpoint to POST to: the configured URL, with the phone-number id path added when only the host was given. */
+const endpoint = () => {
+  const base = (process.env.PINNACLE_API_URL ?? "").trim();
+  if (!base || /\/v\d+\//.test(base) || !phoneId()) return base;
+  return `${base.replace(/\/+$/, "")}/v3/${phoneId()}/messages`;
+};
+const configured = () => Boolean(endpoint() && process.env.PINNACLE_API_KEY && (fromNumber() || phoneId()) && process.env.PINNACLE_OTP_TEMPLATE_ID);
 const isProd = () => process.env.APP_ENV === "production" || process.env.APP_ENV === "staging" || process.env.NODE_ENV === "production";
 
 /** Whether to offer WhatsApp sign-in: a real provider, or local development. */
@@ -24,13 +33,13 @@ export const whatsappOtpEnabled = () => configured() || !isProd();
 const style = (): "meta" | "legacy" => {
   const s = process.env.PINNACLE_API_STYLE?.toLowerCase();
   if (s === "meta" || s === "legacy") return s;
-  return /\/v\d+\//.test(process.env.PINNACLE_API_URL ?? "") ? "meta" : "legacy";
+  return /\/v\d+\//.test(endpoint()) ? "meta" : "legacy";
 };
 
 function requestBody(digitsTo: string, code: string): unknown {
   if (style() === "legacy") {
     return {
-      from: process.env.PINNACLE_FROM!.replace(/\D/g, ""), to: digitsTo, type: "template",
+      from: fromNumber().replace(/\D/g, ""), to: digitsTo, type: "template",
       message: { templateid: process.env.PINNACLE_OTP_TEMPLATE_ID!, placeholders: [code] },
     };
   }
@@ -49,9 +58,9 @@ export async function sendWhatsappOtp(e164: string, code: string): Promise<void>
     console.log(`[dev] WhatsApp OTP for ${e164}: ${code}`);
     return;
   }
-  const res = await fetch(process.env.PINNACLE_API_URL!, {
+  const res = await fetch(endpoint(), {
     method: "POST",
-    headers: { "content-type": "application/json", apikey: process.env.PINNACLE_API_KEY! },
+    headers: { "content-type": "application/json", apikey: process.env.PINNACLE_API_KEY!.trim() },
     body: JSON.stringify(requestBody(e164.replace(/\D/g, ""), code)),
     signal: AbortSignal.timeout(10_000),
   });

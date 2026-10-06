@@ -33,5 +33,14 @@ export async function sendWhatsappOtp(e164: string, code: string): Promise<void>
     }),
     signal: AbortSignal.timeout(10_000),
   });
-  if (!res.ok) throw new Error(`pinnacle responded ${res.status}`); // never include the body: it can echo the number/code
+  // The reply can echo the number or code, so only a few known status/error fields are ever surfaced — never the raw body.
+  const text = await res.text().catch(() => "");
+  let body: Record<string, unknown> = {};
+  try { body = JSON.parse(text) as Record<string, unknown>; } catch { /* not JSON */ }
+  const pick = (v: unknown) => (typeof v === "string" || typeof v === "number" ? String(v).replace(/\d{6,}/g, "#").slice(0, 160) : "");
+  const err = (body.error ?? {}) as Record<string, unknown>;
+  const reason = pick(body.message) || pick(body.error_message) || pick(err.message) || pick(body.error) || pick(body.status) || pick(body.detail);
+  const rejected = !res.ok || body.success === false || body.status === "failed" || body.status === "error" || Boolean(body.error);
+  if (rejected) throw new Error(`pinnacle ${res.status}${reason ? `: ${reason}` : ""}`);
+  console.log(JSON.stringify({ level: "info", route: "whatsapp-otp", provider: "pinnacle", status: res.status, reply: reason || "accepted" }));
 }

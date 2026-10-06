@@ -116,7 +116,7 @@ export async function issueSession(db: Db, user: typeof users.$inferSelect, id: 
     await tx.insert(loginAttempts).values({ emailHash, ip, success: true });
     await writeAudit(tx, { companyId: user.companyId, actorId: user.id, action: "auth.login", resourceType: "user", resourceId: user.id }, ctx);
   });
-  return { token, expiresAt, mfaRequired, mfaEnrolmentRequired: mfaRequired && !user.mfaEnabled, mustChangePassword: !user.passwordChangedAt };
+  return { token, expiresAt, mfaRequired, mfaEnrolmentRequired: mfaRequired && !user.mfaEnabled, mustChangePassword: Boolean(user.passwordHash) && !user.passwordChangedAt };
 }
 
 export interface SessionInfo { sessionId: string; actor: Actor; mfaVerified: boolean; companyStatus: string | null; passwordChangeRequired: boolean }
@@ -124,7 +124,7 @@ export interface SessionInfo { sessionId: string; actor: Actor; mfaVerified: boo
 /** Resolves a raw cookie token to an actor. Enforces revocation, absolute expiry and idle timeout. */
 export async function resolveSession(db: Db, token: string | undefined, now = new Date()): Promise<SessionInfo | null> {
   if (!token || token.length > 128) return null;
-  const [row] = await db.select({ s: sessions, companyStatus: companies.status, companyId: users.companyId, scope: users.scope, passwordChangedAt: users.passwordChangedAt })
+  const [row] = await db.select({ s: sessions, companyStatus: companies.status, companyId: users.companyId, scope: users.scope, passwordChangedAt: users.passwordChangedAt, hasPassword: sql<boolean>`${users.passwordHash} IS NOT NULL` })
     .from(sessions).innerJoin(users, eq(users.id, sessions.userId)).leftJoin(companies, eq(companies.id, users.companyId))
     .where(eq(sessions.tokenHash, hashToken(token)));
   const s = row?.s;
@@ -138,7 +138,7 @@ export async function resolveSession(db: Db, token: string | undefined, now = ne
   }
   // A user created directly by the platform with a temp password (passwordHash set, passwordChangedAt never set)
   // must choose their own password before doing anything else. Every other path sets both fields together.
-  return { sessionId: s.id, actor, mfaVerified: s.mfaVerified, companyStatus: row.companyStatus ?? null, passwordChangeRequired: !row.passwordChangedAt };
+  return { sessionId: s.id, actor, mfaVerified: s.mfaVerified, companyStatus: row.companyStatus ?? null, passwordChangeRequired: row.hasPassword && !row.passwordChangedAt };
 }
 
 /**

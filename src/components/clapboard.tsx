@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState, type ReactNode } from "react";
+import { playClap, primeAudio } from "./film-sound";
 import { Wordmark } from "./wordmark";
 
 /**
@@ -13,6 +14,8 @@ import { Wordmark } from "./wordmark";
 
 /** Must match the total run time of the `clap-*` keyframes in globals.css. */
 export const CLAP_MS = 900;
+/** When the sticks meet inside that run: 38% of the clap-swing keyframes. The clap sound is timed to it. */
+const CLACK_S = (CLAP_MS * 0.38) / 1000;
 
 function prefersReducedMotion(): boolean {
   return typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
@@ -27,6 +30,7 @@ export function useClap() {
   const clapThen = useCallback((href: string) => {
     if (prefersReducedMotion()) { window.location.assign(href); return; }
     setClapping(true);
+    playClap(CLACK_S);
     window.setTimeout(() => window.location.assign(href), CLAP_MS);
   }, []);
   return { clapping, clapThen };
@@ -42,7 +46,9 @@ export function Clapboard({
   clapping?: boolean;
 }) {
   return (
-    <div className={clapping ? "clap is-clapping" : "clap"}>
+    // Submitting the form is the user gesture that lets the browser start audio; the clap itself only
+    // plays once the sign-in request comes back, which is no longer inside that gesture.
+    <div className={clapping ? "clap is-clapping" : "clap"} onSubmitCapture={() => { primeAudio(); }}>
       <div className="clap-stick" aria-hidden="true">
         <div className="clap-stripes" />
         <span className="clap-pin clap-pin-a" />

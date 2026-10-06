@@ -313,12 +313,12 @@ h1, h2, h3, .page-title, .card .value, .status-hero .big, .clap-title, .pitch-ca
 /* Some credential screens (mfa-setup, change-password) put an intro heading OUTSIDE the card,
    directly on the dark backdrop — so that text has to be light, and sized to line up with the card
    underneath it. Error pages wrap theirs in .section, which brings its own light background. */
-.auth > div:not(.section) { width: 100%; max-width: 420px; }
-.auth > div:not(.section) > h1 {
+.auth:not(.auth-cinema) > div:not(.section):not(.clap) { width: 100%; max-width: 420px; }   /* .clap sizes itself (468px) */
+.auth:not(.auth-cinema) > div:not(.section) > h1 {
   color: var(--cream); font-size: clamp(26px, 4vw, 38px); margin: 0 0 8px;
   text-shadow: 0 2px 12px rgba(0, 0, 0, .7);
 }
-.auth > div:not(.section) > .subtle {
+.auth:not(.auth-cinema) > div:not(.section) > .subtle {
   color: rgba(247, 241, 228, .82); margin: 0 0 20px; text-shadow: 0 1px 8px rgba(0, 0, 0, .7);
 }
 
@@ -928,3 +928,217 @@ table.data code.tag-code, .tag-code {
 .or-rule::before, .or-rule::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 .google-btn { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 11px 16px; border-radius: 999px; background: #fff; color: #1f1f1f; border: 1px solid #dadce0; font-size: 14px; font-weight: 600; text-decoration: none; transition: box-shadow .18s, transform .18s var(--ease-pop); }
 .google-btn:hover { box-shadow: 0 6px 16px -8px rgba(0, 0, 0, .35); transform: translateY(-1px); }
+
+/* ═══ sign-in: poster wall + "Lights. Camera." opening shot ══════════════════
+   src/components/poster-wall.tsx, src/components/camera-intro.tsx.
+   The marquee is the ONE deliberately looping animation in the app — it is
+   the background, it is slow, and it stops entirely for reduced motion.
+   Everything on the camera and the board plays once. */
+.auth-cinema { background: var(--black); overflow: clip; }
+.auth-cinema::before, .auth-cinema::after { display: none; }   /* no curtain photo here: the posters are the backdrop */
+
+/* ── the poster wall: classic Telugu posters, four tinted rows ── */
+.pw { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
+.pw-tilt {
+  --pw-h: clamp(130px, 25vh, 270px);
+  position: absolute; left: 50%; top: 50%; width: 150vmax;
+  display: grid; gap: 18px; transform: translate(-50%, -50%) rotate(-8deg);
+}
+.pw-row { height: var(--pw-h); }
+.pw-track {
+  display: flex; gap: 16px; width: max-content; height: 100%;
+  animation: pw-scroll var(--pw-speed, 90s) linear infinite;
+  will-change: transform;
+  /* Filter on the moving layer itself, not per poster and not on a parent: the browser can rasterise the
+     filtered strip once and simply slide it, instead of re-filtering every image each frame.
+     Most of these posters are black-and-white newspaper prints, so each row gets its own tint. */
+  filter: sepia(.6) saturate(1.1) brightness(.6) contrast(1.08);                          /* warm sepia */
+}
+.pw-row-2 .pw-track { filter: grayscale(1) brightness(.58) contrast(1.18); }               /* crisp black & white */
+.pw-row-4 .pw-track { filter: sepia(1) saturate(2.4) hue-rotate(-16deg) brightness(.5) contrast(1.12); }   /* saffron duotone */
+.pw-row-1 .pw-track { --pw-speed: 120s; }
+.pw-row-2 .pw-track { --pw-speed: 100s; animation-direction: reverse; }
+.pw-row-3 .pw-track { --pw-speed: 135s; }
+.pw-row-4 .pw-track { --pw-speed: 110s; animation-direction: reverse; }
+.pw-poster {
+  height: 100%; width: auto; flex: none; border-radius: 5px; object-fit: cover;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, .55), 0 0 0 1px rgba(247, 241, 228, .06);
+}
+/* The track holds the posters twice with a 16px gap between every one, so one full copy (including its
+   trailing gap) is exactly 50% of the track plus half a gap. Sliding by that lands copy B precisely where
+   copy A started: an invisible seam. */
+@keyframes pw-scroll { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(calc(-50% - 8px), 0, 0); } }
+.pw-shade {   /* darkest at the edges, a little clearer behind the stage */
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(ellipse 58% 52% at 50% 50%, rgba(14, 13, 12, .5) 0%, rgba(14, 13, 12, .8) 60%, rgba(14, 13, 12, .96) 100%),
+    linear-gradient(180deg, rgba(14, 13, 12, .55), transparent 22%, transparent 78%, rgba(14, 13, 12, .7));
+}
+.pw-grain {   /* static film grain — a still texture, not an animation */
+  position: absolute; inset: 0; opacity: .1; mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ── the stage: camera and board share one grid cell so they can cross over ── */
+.ci { display: grid; place-items: center; width: 100%; }
+.ci > .cam-stage, .ci > .ci-board { grid-area: 1 / 1; }
+.ci-board { width: min(468px, 100%); position: relative; z-index: 2; }
+
+.cam-stage { position: relative; width: min(440px, 100%); }
+.cam-stage::before {   /* a warm pool of stage light so the dark camera lifts off the posters */
+  content: ""; position: absolute; inset: -18% -30%; z-index: -1; pointer-events: none;
+  background: radial-gradient(closest-side, rgba(255, 214, 160, .2), rgba(239, 75, 35, .08) 55%, transparent);
+}
+.cam-frame { position: relative; display: grid; justify-items: center; gap: 12px; padding: 34px 26px 30px; }
+.cam-corner { position: absolute; width: 28px; height: 28px; border: 0 solid rgba(247, 241, 228, .55); }
+.cam-tl { top: 0; left: 0; border-top-width: 2px; border-left-width: 2px; }
+.cam-tr { top: 0; right: 0; border-top-width: 2px; border-right-width: 2px; }
+.cam-bl { bottom: 0; left: 0; border-bottom-width: 2px; border-left-width: 2px; }
+.cam-br { bottom: 0; right: 0; border-bottom-width: 2px; border-right-width: 2px; }
+.cam-rec-label {
+  position: absolute; top: 9px; left: 40px; opacity: 0; transition: opacity .15s ease;
+  font-size: 10px; font-weight: 700; letter-spacing: .22em; text-transform: uppercase; color: #ff4b3e;
+}
+.wordmark-light .wordmark-mark { color: var(--cream); filter: none; }
+.wordmark-light .wordmark-mark .wm-cut { fill: var(--black); }
+.wordmark-light .wordmark-text { color: var(--cream); text-shadow: 0 2px 10px rgba(0, 0, 0, .6); }
+.cam {
+  width: min(330px, 78vw); height: auto; overflow: visible; margin: 2px 0 4px;
+  transform-origin: 92% 62%;   /* the lens — the push-in goes through it */
+  filter: drop-shadow(0 26px 30px rgba(0, 0, 0, .65));
+}
+.cam-reel, .cam-crank, .cam-beam { transform-box: fill-box; transform-origin: center; }
+.cam-beam { transform-origin: left center; opacity: 0; }
+.cam-lamp { transition: fill .12s ease; }
+
+/* caption and the set calls stack in one slot, so the calls replace the caption in place */
+.cam-slot { display: grid; place-items: center; min-height: 56px; width: 100%; }
+.cam-slot > *, .cam-cues > * { grid-area: 1 / 1; }
+.cam-caption, .cue {
+  margin: 0; color: var(--cream); font-family: var(--display); text-transform: uppercase;
+  font-size: clamp(30px, 6vw, 44px); line-height: 1.04; text-align: center; white-space: nowrap;
+  text-shadow: 0 3px 18px rgba(0, 0, 0, .6);
+}
+.cam-caption .italic-accent { color: var(--orange-2); }
+.cam-cues { display: grid; place-items: center; margin: 0; }
+.cue { opacity: 0; display: inline-flex; align-items: center; gap: 14px; letter-spacing: .03em; }
+.cue-3 { color: #ff6a55; }
+.cue-dot { width: .42em; height: .42em; border-radius: 50%; background: #ff3b30; box-shadow: 0 0 18px rgba(255, 59, 48, .9); }
+
+/* the Record button */
+.rec-btn {
+  display: inline-flex; align-items: center; gap: 12px; margin-top: 6px;
+  padding: 13px 26px 13px 17px; border-radius: 999px; cursor: pointer;
+  border: 1px solid rgba(247, 241, 228, .3); background: rgba(14, 13, 12, .55);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  color: var(--cream); font: inherit; font-size: 12.5px; font-weight: 700; letter-spacing: .24em; text-transform: uppercase;
+  transition: border-color .2s ease, background .2s ease, transform .22s var(--ease-pop);
+}
+.rec-btn:hover { border-color: #ff4b3e; background: rgba(255, 59, 48, .14); transform: translateY(-2px); }
+.rec-btn:active { transform: translateY(1px) scale(.97); }
+.rec-btn:focus-visible { outline: 2px solid #ff4b3e; outline-offset: 3px; }
+.rec-btn:disabled { cursor: default; transform: none; }
+.rec-dot {
+  width: 14px; height: 14px; border-radius: 50%; background: #ff3b30; flex: none;
+  box-shadow: 0 0 0 3px rgba(255, 59, 48, .25), 0 0 14px rgba(255, 59, 48, .55);
+  transition: transform .22s var(--ease-pop), box-shadow .22s ease;
+}
+.rec-btn:hover .rec-dot { transform: scale(1.18); }
+
+/* the sound toggle, bottom-right, for the whole sequence including the clap */
+.sound-btn {
+  position: fixed; right: 18px; bottom: 18px; z-index: 6;
+  display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px 8px 11px; border-radius: 999px;
+  border: 1px solid rgba(247, 241, 228, .25); background: rgba(14, 13, 12, .6); color: var(--cream);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  font: inherit; font-size: 10.5px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; cursor: pointer;
+  transition: border-color .2s ease, color .2s ease;
+}
+.sound-btn:hover { border-color: var(--orange-2); }
+.sound-btn.is-off { color: rgba(247, 241, 228, .55); }
+.sound-btn:focus-visible { outline: 2px solid var(--orange-2); outline-offset: 3px; }
+
+/* ── ROLLING — the calls of a take, ~2.9s, every motion once ──
+   0ms      REC lamp + label on; motor spins up; reels and crank start turning
+   0ms      wordmark, caption and Record button fall away
+   350ms    "ROLL SOUND"
+   950ms    "SOUND SPEED"  (+ the recordist's beep, SPEED_BEEP_S)
+   1550ms   "● ROLLING"
+   1500ms   light spills out of the lens
+   2050ms   the frame flashes
+   2150ms   the camera pushes in through its lens and dissolves
+   2300ms   the clapper board pops up into the same spot (camera-intro.tsx REVEAL_AT_MS)            */
+.cam-stage.is-rolling .cam-rec-label { opacity: 1; }
+.cam-stage.is-rolling .cam-lamp { fill: #ff3b30; filter: drop-shadow(0 0 6px #ff3b30); }
+.cam-stage.is-rolling .cam-reel-a { animation: cam-spin 2.9s cubic-bezier(.5, 0, .9, .9) both; }
+.cam-stage.is-rolling .cam-reel-b { animation: cam-spin-small 2.9s cubic-bezier(.5, 0, .9, .9) both; }
+.cam-stage.is-rolling .cam-crank { animation: cam-crank 2.9s cubic-bezier(.5, 0, .9, .9) both; }
+.cam-stage.is-rolling .cam-beam { animation: cam-beam .9s ease-out 1.5s forwards; }
+/* The judder repeats a fixed 3 times (it is not `infinite`). The push uses `forwards`, not `both`: with
+   `both` its first frame would be held during the delay and, being later in the list, would override
+   the judder entirely. */
+.cam-stage.is-rolling .cam { animation: cam-judder .7s linear 3, cam-push .7s cubic-bezier(.4, 0, .6, .45) 2.15s forwards; }
+.cam-stage.is-rolling .wordmark,
+.cam-stage.is-rolling .cam-caption,
+.cam-stage.is-rolling .rec-btn { animation: ci-fall-away .4s cubic-bezier(.55, 0, 1, .45) forwards; }
+.cam-stage.is-rolling .cue-1 { animation: ci-cue .6s cubic-bezier(.22, 1, .36, 1) .35s both; }
+.cam-stage.is-rolling .cue-2 { animation: ci-cue .6s cubic-bezier(.22, 1, .36, 1) .95s both; }
+.cam-stage.is-rolling .cue-3 { animation: ci-cue-last .8s cubic-bezier(.22, 1, .36, 1) 1.55s both; }
+.cam-stage.is-rolling .cam-corner { animation: ci-corner-in .7s cubic-bezier(.22, 1, .36, 1) 1.9s forwards; }
+.cam-stage.is-rolling .cam-rec-label { animation: ci-fade .3s ease 2.4s forwards; }
+.cam-flash {
+  position: fixed; inset: 0; z-index: 3; pointer-events: none; opacity: 0;
+  background: radial-gradient(circle at 50% 46%, rgba(255, 247, 224, .95), rgba(255, 236, 200, .35) 34%, transparent 70%);
+}
+.cam-stage.is-rolling .cam-flash { animation: ci-flash .6s ease-out 2.05s forwards; }
+
+/* ── the board pops up into the shot the camera just left ──
+   A springy overshoot rather than a slide. `backwards` so that once it lands no transform is left on the
+   wrapper (a lingering transform would become the containing block for the clap animation inside). */
+.ci-board { animation: ci-board-pop .85s cubic-bezier(.2, .8, .3, 1) backwards; }
+
+@keyframes cam-spin { to { transform: rotate(1800deg); } }
+@keyframes cam-spin-small { to { transform: rotate(2250deg); } }   /* the smaller reel turns faster */
+@keyframes cam-crank { to { transform: rotate(1260deg); } }
+@keyframes cam-judder {
+  0%, 100% { transform: translate(0, 0); }
+  15% { transform: translate(-1.2px, .8px); } 30% { transform: translate(1px, -.6px); }
+  45% { transform: translate(-.8px, -.8px); } 60% { transform: translate(1.2px, .6px); }
+  75% { transform: translate(-.6px, .5px); } 90% { transform: translate(.5px, -.4px); }
+}
+@keyframes cam-push { to { transform: scale(2.5); opacity: 0; filter: blur(7px); } }
+@keyframes cam-beam { 0% { opacity: 0; transform: scaleX(.15); } 35% { opacity: .9; } 100% { opacity: 0; transform: scaleX(1); } }
+@keyframes ci-fall-away { to { opacity: 0; transform: translateY(14px); } }
+@keyframes ci-cue {   /* slams in, holds, lifts out */
+  0% { opacity: 0; transform: translateY(20px) scale(1.12); filter: blur(5px); }
+  22% { opacity: 1; transform: none; filter: blur(0); }
+  78% { opacity: 1; transform: none; filter: blur(0); }
+  100% { opacity: 0; transform: translateY(-16px) scale(.96); filter: blur(4px); }
+}
+@keyframes ci-cue-last {   /* "Rolling" holds until the flash takes it */
+  0% { opacity: 0; transform: translateY(20px) scale(1.12); filter: blur(5px); }
+  18% { opacity: 1; transform: none; filter: blur(0); }
+  85% { opacity: 1; transform: none; filter: blur(0); }
+  100% { opacity: 0; transform: scale(1.06); filter: blur(4px); }
+}
+@keyframes ci-corner-in { to { opacity: 0; transform: scale(.82); } }
+@keyframes ci-fade { to { opacity: 0; } }
+@keyframes ci-flash { 0% { opacity: 0; } 28% { opacity: .9; } 100% { opacity: 0; } }
+@keyframes ci-board-pop {
+  0% { opacity: 0; transform: translateY(140px) scale(.7) rotate(-4deg); }
+  60% { opacity: 1; transform: translateY(-10px) scale(1.03) rotate(.6deg); }
+  80% { transform: translateY(3px) scale(.995) rotate(-.15deg); }
+  100% { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pw-track { animation: none; }
+  .ci-board { animation: none; }
+  .cam-stage.is-rolling * { animation: none !important; }
+}
+@media (max-width: 800px) {
+  .pw-tilt { --pw-h: clamp(110px, 21vh, 200px); gap: 12px; }
+  .cam-frame { padding: 28px 16px 24px; }
+  .sound-btn span { display: none; }
+  .sound-btn { padding: 9px; }
+}

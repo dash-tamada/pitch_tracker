@@ -65,7 +65,7 @@ export function CameraIntro({ children, skip = false }: {
   }
 
   return (
-    <div className={`ci ci-${phase}`}>
+    <div className={`ci ci-phase-${phase}`}>
       {phase !== "board" && <CameraStage rolling={phase !== "idle"} onRecord={record} />}
       {(phase === "reveal" || phase === "board") && (
         <div className="ci-board" ref={boardRef}>{children}</div>

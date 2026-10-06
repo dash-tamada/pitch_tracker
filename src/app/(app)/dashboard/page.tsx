@@ -19,8 +19,7 @@ export default async function DashboardPage() {
 
   return (
     <div className="dash">
-      <HeroBanner name={brand?.name ?? "This studio"} total={s.total} inReview={s.underReview} inProduction={s.inProduction} canCreate={can(actor, "pitch.create")} />
-      <p className="dash-lede">{management ? "The whole story pipeline you are cleared to see." : "Your stories and what needs your attention."}</p>
+      <HeroBanner name={brand?.name ?? "This studio"} canCreate={can(actor, "pitch.create")} />
       <div className="cards">
         <Stat label="Total pitches" value={s.total} />
         <Stat label="New (this month)" value={s.newThisMonth} />

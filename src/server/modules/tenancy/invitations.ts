@@ -11,10 +11,12 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import type { Db, DbOrTx } from "@/server/db/client";
-import { companies, companyAllowedEmails, companyEmailDomains, jobOutbox, sessions, userInvitations, users } from "@/server/db/schema";
+import { companies, companyAllowedEmails, companyEmailDomains, jobOutbox, loginOtps, sessions, userInvitations, users } from "@/server/db/schema";
 import { AppError } from "@/server/lib/errors";
+import { normalizeMobile } from "@/server/lib/pii";
 import { parseInput } from "@/server/lib/validation";
 import { writeAudit, type RequestContext } from "@/server/modules/audit/service";
+import { BAD_CODE, checkCode, deliverCode, issueCode, validMobile } from "@/server/modules/auth/otp";
 import { hashPassword, passwordPolicyErrors } from "@/server/modules/auth/password";
 import { BLOCKED_COMPANY_STATUSES } from "@/server/modules/auth/service";
 import { hashToken, newToken } from "@/server/modules/auth/tokens";
@@ -68,5 +70,56 @@ export async function acceptInvitation(platformDb: Db, raw: unknown, ctx: Reques
     await tx.update(sessions).set({ revokedAt: new Date() }).where(and(eq(sessions.userId, u.id), isNull(sessions.revokedAt)));
     await writeAudit(tx, { companyId: inv.companyId, actorId: u.id, action: "auth.invitation_accepted", resourceType: "user", resourceId: u.id }, ctx);
     return { ok: true };
+  });
+}
+
+/*
+ * Accepting by WhatsApp: the invited person proves they hold a mobile number with a one-time code instead of choosing a
+ * password. The number is saved on their account and becomes how they sign in. The password path above stays for the API.
+ * The code is bound to this invitation AND this number, so it cannot be reused for anything else.
+ */
+const inviteScope = (invitationId: string, e164: string) => `invite:${invitationId}:${e164}`;
+export const inviteOtpRequestSchema = z.object({ token: z.string().min(20).max(128), mobile: z.string().trim().min(5).max(24) }).strict();
+export const acceptByOtpSchema = z.object({ token: z.string().min(20).max(128), mobile: z.string().trim().min(5).max(24), code: z.string().trim().regex(/^\d{6}$/) }).strict();
+
+async function liveInvitation(db: Db, token: string) {
+  const invalid = () => new AppError("VALIDATION", "This invitation is invalid or has expired. Ask your Company Admin for a new one.");
+  const [inv] = await db.select().from(userInvitations).where(eq(userInvitations.tokenHash, hashToken(token)));
+  if (!inv || inv.usedAt || inv.revokedAt || inv.expiresAt <= new Date()) throw invalid();
+  const [u] = await db.select({ id: users.id, status: users.status, companyId: users.companyId }).from(users).where(eq(users.id, inv.userId));
+  if (!u || u.companyId !== inv.companyId || u.status !== "INVITED") throw invalid();
+  const [company] = await db.select({ status: companies.status }).from(companies).where(eq(companies.id, inv.companyId));
+  if (!company || BLOCKED_COMPANY_STATUSES.has(company.status)) throw new AppError("COMPANY_UNAVAILABLE", "Your company's account is not active. Please contact your company administrator.");
+  return inv;
+}
+
+/** Identity connection. Sends the code to the number the invitee entered. */
+export async function requestInvitationOtp(platformDb: Db, raw: unknown, ctx: RequestContext = {}, now = new Date()) {
+  const { token, mobile } = parseInput(inviteOtpRequestSchema, raw);
+  const e164 = validMobile(mobile);
+  const inv = await liveInvitation(platformDb, token);
+  const code = await issueCode(platformDb, inviteScope(inv.id, e164), ctx, now);
+  await deliverCode(e164, code);
+  await writeAudit(platformDb, { companyId: inv.companyId, actorId: null, action: "auth.invitation_otp_requested", resourceType: "user", resourceId: inv.userId }, ctx);
+  return { sent: true as const };
+}
+
+/** Identity connection. Verifies the code, saves the number, activates the account. They then sign in with a fresh code. */
+export async function acceptInvitationByOtp(platformDb: Db, raw: unknown, ctx: RequestContext = {}, now = new Date()) {
+  const { token, mobile, code } = parseInput(acceptByOtpSchema, raw);
+  const e164 = normalizeMobile(mobile);
+  if (!e164) throw BAD_CODE();
+  const inv = await liveInvitation(platformDb, token);
+  const otpId = await checkCode(platformDb, inviteScope(inv.id, e164), code, ctx, now);
+  return platformDb.transaction(async (tx) => {
+    // Re-check under lock so two parallel accepts cannot both succeed.
+    const [locked] = await tx.select().from(userInvitations).where(eq(userInvitations.id, inv.id)).for("update");
+    if (!locked || locked.usedAt || locked.revokedAt) throw new AppError("VALIDATION", "This invitation is invalid or has expired. Ask your Company Admin for a new one.");
+    await tx.update(loginOtps).set({ verifiedAt: now, consumedAt: now }).where(eq(loginOtps.id, otpId));
+    await tx.update(userInvitations).set({ usedAt: now }).where(eq(userInvitations.id, inv.id));
+    await tx.update(users).set({ mobileE164: e164, status: "ACTIVE", failedLoginCount: 0, lockedUntil: null }).where(eq(users.id, inv.userId));
+    await tx.update(sessions).set({ revokedAt: now }).where(and(eq(sessions.userId, inv.userId), isNull(sessions.revokedAt)));
+    await writeAudit(tx, { companyId: inv.companyId, actorId: inv.userId, action: "auth.invitation_accepted", resourceType: "user", resourceId: inv.userId, after: { method: "whatsapp" } }, ctx);
+    return { ok: true as const };
   });
 }

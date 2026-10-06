@@ -25,15 +25,15 @@ const URL_ERRORS: Record<string, string> = {
   google_off: "Sign in with Google is not set up yet.",
 };
 
-type Step = "password" | "mfa" | "wa-mobile" | "wa-code" | "wa-choose";
+type Step = "password" | "mfa" | "wa-mobile" | "wa-code" | "wa-choose" | "social";
 interface AccountChoice { userId: string; company: string; name: string; email: string }
 interface SessionReply { mustChangePassword?: boolean; mfaEnrolmentRequired?: boolean; mfaRequired?: boolean; choose?: AccountChoice[]; choiceToken?: string }
 
 const TITLES: Record<Step, string> = {
-  password: "Sign in", mfa: "Two-factor verification", "wa-mobile": "Sign in with WhatsApp", "wa-code": "Enter your code", "wa-choose": "Choose an account",
+  password: "Sign in", mfa: "Two-factor verification", "wa-mobile": "Sign in with WhatsApp", "wa-code": "Enter your code", "wa-choose": "Choose an account", social: "Sign in",
 };
 
-export function LoginForm({ initialStep, google = false, whatsapp = false, urlError }: { initialStep: "password" | "mfa"; google?: boolean; whatsapp?: boolean; urlError?: string }) {
+export function LoginForm({ initialStep, google = false, whatsapp = false, urlError }: { initialStep: "password" | "mfa" | "wa-mobile" | "social"; google?: boolean; whatsapp?: boolean; urlError?: string }) {
   const [step, setStep] = useState<Step>(initialStep);
   const [error, setError] = useState<string | null>(urlError ? URL_ERRORS[urlError] ?? null : null);
   const [busy, setBusy] = useState(false);
@@ -137,31 +137,30 @@ export function LoginForm({ initialStep, google = false, whatsapp = false, urlEr
               ))}
             </ul>
           </>
-        ) : (
+        ) : step === "social" ? null : (
           <button className="btn" disabled={busy}>{busy ? "Rolling…" : step === "wa-mobile" ? "Send code" : "Action"}</button>
         )}
-        {step === "password" && (google || whatsapp) && <p className="or-rule"><span>or</span></p>}
-        {step === "password" && google && (
-          <a className="google-btn" href="/api/v1/auth/google/start">
-            <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
+        {(step === "wa-mobile" || step === "social") && google && (
+          <>
+            {step === "wa-mobile" && <p className="or-rule"><span>or</span></p>}
+            <a className="google-btn" href="/api/v1/auth/google/start">
+              <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
               <path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.9 6.1C12.4 13.6 17.7 9.5 24 9.5z" />
               <path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4.1 7.1-10.1 7.1-17.5z" />
               <path fill="#FBBC05" d="M10.5 28.7c-.5-1.5-.8-3-.8-4.7s.3-3.2.8-4.7l-7.9-6.1C.9 16.4 0 20.1 0 24s.9 7.6 2.6 10.8l7.9-6.1z" />
               <path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.5-5.8c-2.1 1.4-4.9 2.3-8.4 2.3-6.3 0-11.6-4.1-13.5-9.8l-7.9 6.1C6.5 42.6 14.6 48 24 48z" />
             </svg>
-            Sign in with Google
-          </a>
+              Sign in with Google
+            </a>
+          </>
         )}
-        {step === "password" && whatsapp && (
-          <button type="button" className="wa-btn" onClick={() => go("wa-mobile")}>
-            <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="#25D366" d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Z" /><path fill="#fff" d="M8.6 7.5c-.2-.4-.4-.4-.6-.4h-.5c-.2 0-.5.1-.7.3-.2.3-.9.9-.9 2.2s.9 2.5 1 2.7c.2.2 1.8 2.9 4.5 3.9 2.2.9 2.7.7 3.2.7.5-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.2-1.2-.1-.1-.2-.2-.5-.3l-1.6-.8c-.2-.1-.4-.1-.6.1l-.7.9c-.1.2-.3.2-.5.1-.3-.1-1.1-.4-2-1.3-.7-.7-1.2-1.5-1.3-1.8-.1-.2 0-.4.1-.5l.4-.5c.1-.1.2-.3.2-.5.1-.2 0-.3 0-.5l-.7-1.7Z" /></svg>
-            Sign in with WhatsApp
-          </button>
+        {step === "social" && !google && <p className="subtle">Sign-in is being set up. Please contact your administrator.</p>}
+        {step === "wa-code" && <p className="subtle"><button type="button" className="link-btn" onClick={() => go("wa-mobile")}>Use a different number</button></p>}
+        {step === "wa-choose" && <p className="subtle"><button type="button" className="link-btn" onClick={() => go("wa-mobile")}>Start again</button></p>}
+        {(step === "wa-mobile" || step === "social") && <p className="subtle"><a href="/login?admin=1">Platform administrator? Sign in with email</a></p>}
+        {step === "password" && (
+          <p className="subtle"><a href="/forgot-password">Forgot password?</a> · <a href="/login">Back to sign in with mobile or Google</a></p>
         )}
-        {(step === "wa-mobile" || step === "wa-code" || step === "wa-choose") && (
-          <p className="subtle"><button type="button" className="link-btn" onClick={() => go("password")}>Back to email sign-in</button></p>
-        )}
-        {step === "password" && <p className="subtle"><a href="/forgot-password">Forgot password?</a></p>}
       </form>
     </Clapboard>
   );

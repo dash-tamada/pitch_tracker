@@ -102,6 +102,18 @@ export function errorResponse(err: unknown, requestId: string): Response {
   if (err && typeof err === "object" && (err as { name?: string }).name === "ZodError") {
     return NextResponse.json({ error: { code: "VALIDATION", message: "The request is not valid." } }, { status: 400 });
   }
+  // A database connection failure is operationally different from an application bug. Return a
+  // retryable 503 and a useful development message instead of making the login page look broken with
+  // a generic 500. The underlying driver code is still kept out of the response.
+  const dbCode = databaseErrorCode(err);
+  if (dbCode) {
+    console.error(JSON.stringify({ level: "error", requestId, name: err instanceof Error ? err.name : "unknown", dbCode }));
+    const message = process.env.NODE_ENV === "development"
+      ? "Database unavailable. Start PostgreSQL or check DATABASE_URL and PLATFORM_DATABASE_URL."
+      : "The database is temporarily unavailable. Please try again later.";
+    return NextResponse.json({ error: { code: "DATABASE_UNAVAILABLE", message, requestId } }, { status: 503, headers: { "x-request-id": requestId, "retry-after": "5" } });
+  }
+
   // Details go to server logs only — never to the client.
   // Driver errors embed SQL parameters (possibly personal data) in `message`, so log only structured codes for
   // those. Everything else's `message` is engineer-written operational text (e.g. StorageError wrapping a Google
@@ -112,6 +124,27 @@ export function errorResponse(err: unknown, requestId: string): Response {
     message: !isDriverError && err instanceof Error ? err.message.slice(0, 800) : undefined,
     dbCode: cause?.code, dbConstraint: cause?.constraint }));
   return NextResponse.json({ error: { code: "INTERNAL", message: "Something went wrong. Please try again.", requestId } }, { status: 500 });
+}
+
+/** Return a safe, structured driver code for connection failures, including AggregateError causes. */
+function databaseErrorCode(err: unknown): string | undefined {
+  const seen = new Set<unknown>();
+  const visit = (value: unknown): string | undefined => {
+    if (!value || typeof value !== "object" || seen.has(value)) return undefined;
+    seen.add(value);
+    const record = value as { code?: unknown; cause?: unknown; errors?: unknown };
+    if (typeof record.code === "string" && ["ECONNREFUSED", "ECONNRESET", "ENOTFOUND", "ETIMEDOUT", "EHOSTUNREACH"].includes(record.code)) return record.code;
+    const cause = visit(record.cause);
+    if (cause) return cause;
+    if (Array.isArray(record.errors)) {
+      for (const nested of record.errors) {
+        const code = visit(nested);
+        if (code) return code;
+      }
+    }
+    return undefined;
+  };
+  return visit(err);
 }
 
 export function ok(body: unknown, status = 200): Response {

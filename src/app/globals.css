@@ -1173,8 +1173,8 @@ table.data code.tag-code, .tag-code {
 .nav a.nav-link:hover { background: rgba(247, 241, 228, .07); color: #fff; transform: none; }
 .nav a.nav-link.active { color: #fff; font-weight: 600; transform: none; background: linear-gradient(180deg, #ff8a34, #f0541a); box-shadow: 0 12px 24px -12px rgba(239, 75, 35, .9), inset 0 1px 0 rgba(255, 255, 255, .3); }
 .nav-badge { margin-left: auto; min-width: 25px; height: 25px; padding: 0 6px; border-radius: 999px; display: grid; place-items: center; background: linear-gradient(180deg, #ff6a3d, #ef4b23); color: #fff; font-size: 12.5px; font-weight: 700; }
-.nav-tag { margin-top: auto; padding-top: 18px; display: flex; align-items: center; gap: 14px; border-top: 1px solid rgba(247, 241, 228, .12); font-size: 11.5px; line-height: 1.7; letter-spacing: .24em; text-transform: uppercase; color: rgba(247, 241, 228, .75); }
-.nav-tag svg { flex: none; }
+.nav-footer { margin-top: auto; padding-top: 18px; display: flex; align-items: center; gap: 14px; border-top: 1px solid rgba(247, 241, 228, .12); font-size: 11.5px; line-height: 1.7; letter-spacing: .24em; text-transform: uppercase; color: rgba(247, 241, 228, .75); }
+.nav-footer svg { flex: none; }
 
 /* top bar: glass search pill, bell, user chip */
 .topbar { gap: 18px; margin-bottom: 26px; flex-wrap: nowrap; align-items: center; }
@@ -1187,13 +1187,9 @@ table.data code.tag-code, .tag-code {
 .bell { width: 54px; height: 54px; padding: 0; justify-content: center; border-radius: 50%; background: rgba(16, 12, 10, .78); border: 1px solid rgba(255, 255, 255, .22); color: #fff; -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
 .bell-dot { position: absolute; top: 13px; right: 15px; width: 10px; height: 10px; border-radius: 50%; background: #ff4d1a; box-shadow: 0 0 0 2px #120d0b; }
 .topbar .head-actions { display: flex; align-items: center; gap: 14px; flex: none; }
-.user-chip { display: inline-flex; align-items: center; gap: 12px; height: 54px; padding: 0 18px 0 7px; border-radius: 999px; background: rgba(16, 12, 10, .78); border: 1px solid rgba(255, 255, 255, .22); color: #fff; -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
-.user-chip .avatar { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; font-size: 20px; font-weight: 800; color: #fff; text-decoration: none; background: linear-gradient(180deg, #ff8a34, #f0541a); }
-.user-chip .btn-secondary { border: 0; background: transparent; color: #fff; padding: 0; font-size: 16px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; cursor: pointer; }
-.user-chip .btn-secondary:hover { color: var(--orange-2); }
 
 /* ── dashboard: the whole page turns dark and the hero slides up under the top bar ── */
-.main:has(.dash) { background: #0b0807; color: #f3ece0; padding-top: 0; }
+.main:has(.dash) { padding-top: 0; }
 .main:has(.dash) .topbar { position: absolute; top: 26px; left: var(--pad); right: var(--pad); z-index: 6; margin: 0; }
 .main:has(.dash) .notice { margin-top: 90px; }
 .dash { color: #f3ece0; }
@@ -1257,3 +1253,52 @@ table.data code.tag-code, .tag-code {
   .pill { padding: 15px 24px; font-size: 16px; }
 }
 @media (prefers-reduced-motion: reduce) { .pill, .dash .card { transition: none; } }
+
+/* ═══ One theme everywhere: the dark studio on every signed-in page, with the old posters ghosted behind ═══ */
+.shell { position: relative; isolation: isolate; background: #0b0807; color: #f3ece0; }
+.shell .main {
+  /* re-point the palette: everything that already reads var(--card)/var(--ink)/var(--line) flips to dark by itself */
+  --card: rgba(25, 19, 15, .84); --card-2: rgba(36, 28, 22, .9); --cream-2: rgba(255, 255, 255, .07);
+  --ink: #f3ece0; --ink-2: rgba(243, 236, 224, .8); --muted: rgba(243, 236, 224, .58);
+  --line: rgba(255, 255, 255, .14); --line-soft: rgba(255, 255, 255, .08); --orange-deep: #ff7a45;
+  --shadow-card: 0 10px 28px -18px rgba(0, 0, 0, .8); --shadow-card-hover: 0 18px 38px -18px rgba(0, 0, 0, .9);
+  color: var(--ink);
+}
+.shell .main h1, .shell .main h2, .shell .main h3 { color: #fff; }
+.shell .main .card, .shell .main .section, .shell .main .table-wrap, .shell .main .kanban-col, .shell .main .pitch-card,
+.shell .main .crew-card, .shell .main details.drawer, .shell .main .poster { -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+.shell .main input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not(.topbar input), .shell .main select, .shell .main textarea {
+  background: rgba(255, 255, 255, .06); color: var(--ink); border-color: var(--line);
+}
+.shell .main input::placeholder, .shell .main textarea::placeholder { color: rgba(243, 236, 224, .42); }
+.shell .main select option { background: #1a1512; color: #f3ece0; }
+.shell .main input:focus, .shell .main select:focus, .shell .main textarea:focus { border-color: var(--orange); box-shadow: 0 0 0 3px rgba(239, 75, 35, .22); }
+.shell .main .notice { background: rgba(210, 164, 22, .14); color: #f0d58a; border-left-color: #d2a416; }
+.shell .main .success, .shell .main .ready-banner { background: rgba(63, 122, 70, .2); color: #a9dbb0; border-left-color: #3f7a46; }
+.shell .main .error { color: #ff8f80; }
+.shell .main .chart .bar2 { fill: rgba(255, 255, 255, .55); }
+.shell .main .btn-secondary { color: var(--ink); background: rgba(255, 255, 255, .04); }
+.shell .main .btn-secondary:hover { background: rgba(255, 255, 255, .1); border-color: rgba(255, 255, 255, .4); }
+.shell .main table.data tbody tr:hover td { background: rgba(255, 255, 255, .05); }
+.shell .main a:not([class]) { color: #ffa263; }
+
+/* posters ghosted behind the whole app: still, tinted and heavily shaded so they read as texture */
+.pw-app { position: fixed; z-index: -1; opacity: .9; }
+.pw-app .pw-track { animation: none; transform: none; }
+.pw-app .pw-tilt { --pw-h: clamp(150px, 26vh, 260px); }
+.pw-app .pw-shade { background: linear-gradient(180deg, rgba(11, 8, 7, .62), rgba(11, 8, 7, .78) 55%, rgba(11, 8, 7, .9)); }
+
+/* top bar: the profile and the Cut button are two separate pills */
+.profile-chip { display: inline-flex; align-items: center; gap: 11px; height: 54px; padding: 0 20px 0 7px; border-radius: 999px; text-decoration: none; color: #fff; background: rgba(16, 12, 10, .78); border: 1px solid rgba(255, 255, 255, .22); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); transition: border-color .16s, transform .18s var(--ease-pop); }
+.profile-chip:hover { border-color: rgba(255, 140, 50, .7); transform: translateY(-1px); }
+.profile-chip .avatar { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; font-size: 20px; font-weight: 800; color: #fff; background: linear-gradient(180deg, #ff8a34, #f0541a); }
+.profile-name { font-size: 15px; font-weight: 600; max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cut-btn { display: inline-flex; align-items: center; gap: 11px; height: 54px; padding: 0 26px 0 22px; border-radius: 999px; cursor: pointer; font-size: 16px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: #fff; background: rgba(16, 12, 10, .78); border: 1px solid rgba(255, 255, 255, .22); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+.cut-btn:hover { border-color: #ff4d3a; color: #fff; }
+.cut-ico { width: 14px; height: 14px; border-radius: 3px; background: #ff3b30; box-shadow: 0 0 10px rgba(255, 59, 48, .7); }
+.shell .main .topbar .btn-secondary.cut-btn { background: rgba(16, 12, 10, .78); }
+@media (max-width: 900px) { .profile-name { display: none; } .profile-chip { padding-right: 7px; } .cut-btn { padding: 0 18px 0 16px; } }
+@media (max-width: 900px) {
+  .topbar form { flex: 1 1 100%; }
+  .topbar .head-actions { width: 100%; justify-content: flex-end; }
+}

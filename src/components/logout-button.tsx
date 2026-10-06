@@ -29,7 +29,7 @@ export function LogoutButton() {
 
   return (
     <>
-      <button className="btn-secondary" onClick={cut} disabled={Boolean(shot)} aria-label="Cut: stop recording and sign out">Cut</button>
+      <button className="btn-secondary cut-btn" onClick={cut} disabled={Boolean(shot)} aria-label="Cut: stop recording and sign out"><span className="cut-ico" aria-hidden="true" />Cut</button>
       {shot && createPortal(
         <div className="cut-overlay" role="status" aria-live="assertive">
           <div className="cut-card">

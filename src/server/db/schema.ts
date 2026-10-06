@@ -160,6 +160,77 @@ export const loginOtps = pgTable("login_otps", {
   uniqueIndex("login_otps_choice_uq").on(t.choiceTokenHash).where(sql`${t.choiceTokenHash} IS NOT NULL`),
 ]);
 
+/* ─── Platform-wide creators (see drizzle/0012_public_creators.sql): not tied to any company ─── */
+export const publicCreators = pgTable("public_creators", {
+  id: id(),
+  mobileE164: varchar("mobile_e164", { length: 16 }).notNull(),
+  fullName: varchar("full_name", { length: 120 }).notNull(),
+  creatorType: varchar("creator_type", { length: 30 }).notNull(),
+  createdAt: createdAt(),
+  lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+  disabledAt: timestamp("disabled_at", { withTimezone: true }),
+}, (t) => [uniqueIndex("public_creators_mobile_uq").on(t.mobileE164)]);
+
+export const publicCreatorSessions = pgTable("public_creator_sessions", {
+  id: id(),
+  creatorId: uuid("creator_id").notNull().references(() => publicCreators.id, { onDelete: "cascade" }),
+  tokenHash: bytea("token_hash").notNull(),
+  ip: inet("ip"),
+  userAgent: text("user_agent"),
+  createdAt: createdAt(),
+  lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+}, (t) => [uniqueIndex("public_creator_sessions_token_uq").on(t.tokenHash)]);
+
+export const publicDrafts = pgTable("public_drafts", {
+  id: id(),
+  creatorId: uuid("creator_id").notNull().references(() => publicCreators.id, { onDelete: "cascade" }),
+  title: varchar("title", { length: 200 }).notNull(),
+  logline: varchar("logline", { length: 500 }),
+  shortSynopsis: text("short_synopsis"),
+  detailedSynopsis: text("detailed_synopsis"),
+  formatKey: varchar("format_key", { length: 60 }),
+  languageKey: varchar("language_key", { length: 60 }),
+  genreKey: varchar("genre_key", { length: 60 }),
+  episodeCount: integer("episode_count"),
+  episodeDurationMin: integer("episode_duration_min"),
+  targetAudience: varchar("target_audience", { length: 200 }),
+  notes: text("notes"),
+  status: varchar("status", { length: 12 }).notNull().default("DRAFT"),
+  createdAt: createdAt(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index("public_drafts_creator_idx").on(t.creatorId, t.updatedAt)]);
+
+export const publicDraftUploads = pgTable("public_draft_uploads", {
+  id: id(),
+  draftId: uuid("draft_id").notNull().references(() => publicDrafts.id, { onDelete: "cascade" }),
+  creatorId: uuid("creator_id").notNull().references(() => publicCreators.id, { onDelete: "cascade" }),
+  categoryKey: varchar("category_key", { length: 60 }).notNull(),
+  title: varchar("title", { length: 200 }).notNull(),
+  originalFilename: varchar("original_filename", { length: 255 }).notNull(),
+  declaredSizeBytes: bigint("declared_size_bytes", { mode: "number" }).notNull(),
+  quarantineKey: text("quarantine_key").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  rejectedReason: varchar("rejected_reason", { length: 200 }),
+  createdAt: createdAt(),
+});
+
+export const publicDraftFiles = pgTable("public_draft_files", {
+  id: id(),
+  draftId: uuid("draft_id").notNull().references(() => publicDrafts.id, { onDelete: "cascade" }),
+  creatorId: uuid("creator_id").notNull().references(() => publicCreators.id, { onDelete: "cascade" }),
+  categoryKey: varchar("category_key", { length: 60 }).notNull(),
+  title: varchar("title", { length: 200 }).notNull(),
+  originalFilename: varchar("original_filename", { length: 255 }).notNull(),
+  detectedMime: varchar("detected_mime", { length: 120 }).notNull(),
+  sizeBytes: bigint("size_bytes", { mode: "number" }).notNull(),
+  sha256: varchar("sha256", { length: 64 }).notNull(),
+  storageKey: text("storage_key").notNull(),
+  createdAt: createdAt(),
+}, (t) => [index("public_draft_files_draft_idx").on(t.draftId)]);
+
 export const roles = pgTable("roles", {
   companyId: companyId(),
   id: id(),

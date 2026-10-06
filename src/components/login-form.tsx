@@ -157,7 +157,9 @@ export function LoginForm({ initialStep, google = false, whatsapp = false, urlEr
         {step === "social" && !google && <p className="subtle">Sign-in is being set up. Please contact your administrator.</p>}
         {step === "wa-code" && <p className="subtle"><button type="button" className="link-btn" onClick={() => go("wa-mobile")}>Use a different number</button></p>}
         {step === "wa-choose" && <p className="subtle"><button type="button" className="link-btn" onClick={() => go("wa-mobile")}>Start again</button></p>}
-        {(step === "wa-mobile" || step === "social") && <p className="subtle"><a href="/login?admin=1">Platform administrator? Sign in with email</a></p>}
+        {(step === "wa-mobile" || step === "social") && (
+          <p className="subtle register-cta">Have a story to pitch? <a href="/creator">Register or sign in as a writer or director</a></p>
+        )}
         {step === "password" && (
           <p className="subtle"><a href="/forgot-password">Forgot password?</a> · <a href="/login">Back to sign in with mobile or Google</a></p>
         )}

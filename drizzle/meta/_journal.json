@@ -78,6 +78,13 @@
       "when": 1790070000000,
       "tag": "0010_open_platform_pitching",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1790160000000,
+      "tag": "0011_login_otps",
+      "breakpoints": true
     }
   ]
 }

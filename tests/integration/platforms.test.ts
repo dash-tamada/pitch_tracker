@@ -40,10 +40,10 @@ describe("platform database (Admin-managed, not hard-coded)", () => {
 });
 
 describe("platform pitching rules", () => {
-  it("cannot pitch to a platform before CEO/COO approval (business rule 8)", async () => {
+  it("anyone with platform access can pitch to a platform before any review approval", async () => {
     const p = await approvedPitch("Not yet approved");
     expect(await code(recordPlatformPitch(db, team.employeeA.actor, p.id, { expectedVersion: p.v, platformId: await platformId(db, "aha"), pitchDate: "2026-09-01" })))
-      .toBe("TRANSITION_NOT_ALLOWED");
+      .toBe("OK");
   });
 
   it("validates contact, dates and document versions belong to the right platform/pitch", async () => {

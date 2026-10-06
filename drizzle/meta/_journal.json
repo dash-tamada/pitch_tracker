@@ -71,6 +71,13 @@
       "when": 1789984941454,
       "tag": "0009_remove_executive_review",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1790070000000,
+      "tag": "0010_open_platform_pitching",
+      "breakpoints": true
     }
   ]
 }

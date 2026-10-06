@@ -1282,9 +1282,8 @@ table.data code.tag-code, .tag-code {
 .shell .main table.data tbody tr:hover td { background: rgba(255, 255, 255, .05); }
 .shell .main a:not([class]) { color: #ffa263; }
 
-/* posters ghosted behind the whole app: still, tinted and heavily shaded so they read as texture */
+/* posters ghosted behind the whole app: drifting slowly like the sign-in wall, tinted and shaded so they read as texture */
 .pw-app { position: fixed; z-index: -1; opacity: .9; }
-.pw-app .pw-track { animation: none; transform: none; }
 .pw-app .pw-tilt { --pw-h: clamp(150px, 26vh, 260px); }
 .pw-app .pw-shade { background: linear-gradient(180deg, rgba(11, 8, 7, .62), rgba(11, 8, 7, .78) 55%, rgba(11, 8, 7, .9)); }
 

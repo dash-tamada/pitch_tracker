@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { loadTake, newTake, saveTake, timecode, type Take } from "./viewfinder";
+import { CUT_EVENT, loadTake, newTake, saveTake, timecode, type Take } from "./viewfinder";
 
 /**
  * The camera-monitor overlay on the dashboard: a thin frame with corner handles, a settings bar along the top, a status bar
@@ -11,6 +11,14 @@ import { loadTake, newTake, saveTake, timecode, type Take } from "./viewfinder";
 export function ViewfinderHud() {
   const [t, setT] = useState<Take | null>(null);
   const [tc, setTc] = useState("--:--:--:--");
+  const [cut, setCut] = useState(false);
+
+  // "Cut": the timecode freezes and the REC light goes out
+  useEffect(() => {
+    const stop = () => setCut(true);
+    window.addEventListener(CUT_EVENT, stop);
+    return () => window.removeEventListener(CUT_EVENT, stop);
+  }, []);
 
   useEffect(() => {
     let cur = loadTake();
@@ -19,7 +27,7 @@ export function ViewfinderHud() {
   }, []);
 
   useEffect(() => {
-    if (!t) return;
+    if (!t || cut) return;
     const fps = Number(t.fps);
     const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
     const began = performance.now();
@@ -27,7 +35,7 @@ export function ViewfinderHud() {
     tick();
     const id = window.setInterval(tick, reduced ? 1000 : Math.round(1000 / fps));
     return () => window.clearInterval(id);
-  }, [t]);
+  }, [t, cut]);
 
   if (!t) return null;
   return (
@@ -50,7 +58,7 @@ export function ViewfinderHud() {
         <span>BAT <b>{t.bat}</b></span>
         <span><b>{t.cam}</b> <b>{t.clip}</b></span>
         <span className="vf-tilt">ROLL <b>{t.roll}</b> TILT <b>{t.tilt}</b></span>
-        <span className="vf-rec"><i className="vf-dot" /> REC</span>
+        <span className={cut ? "vf-rec vf-stopped" : "vf-rec"}><i className="vf-dot" /> {cut ? "STBY" : "REC"}</span>
         <span>MEDIA <b>{t.media}</b></span>
         <span>TC <b>{tc}</b></span>
       </div>

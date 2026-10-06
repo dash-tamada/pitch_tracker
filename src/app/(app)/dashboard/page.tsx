@@ -20,6 +20,7 @@ export default async function DashboardPage() {
   return (
     <div className="dash">
       <HeroBanner name={brand?.name ?? "This studio"} canCreate={can(actor, "pitch.create")} />
+      <div className="hero-fade" aria-hidden="true" />
       <div className="cards">
         <Stat label="Total pitches" value={s.total} />
         <Stat label="New (this month)" value={s.newThisMonth} />

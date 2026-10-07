@@ -35,6 +35,11 @@ export class MemoryStorage implements StoragePort {
     if (!b) throw new Error("missing object");
     this.objects.set(to, b); this.objects.delete(from);
   }
+  async copy(from: string, to: string) {
+    const b = this.objects.get(from);
+    if (!b) throw new Error("missing object");
+    this.objects.set(to, Buffer.from(b));
+  }
   async remove(keys: string[]) { keys.forEach((k) => this.objects.delete(k)); }
   async createSignedReadUrl(key: string, ttl: number, name?: string, opts?: { inline?: boolean; contentType?: string }) {
     const token = randomUUID();

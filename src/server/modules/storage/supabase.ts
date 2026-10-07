@@ -60,6 +60,13 @@ export class SupabaseStorage implements StoragePort {
     if (!res.ok) throw new StorageError(`move failed (${res.status})`);
   }
 
+  async copy(fromKey: string, toKey: string) {
+    encodeKey(fromKey); encodeKey(toKey);
+    const res = await this.call(`/object/copy`, { method: "POST", headers: this.headers({ "content-type": "application/json" }),
+      body: JSON.stringify({ bucketId: this.bucket, sourceKey: fromKey, destinationKey: toKey }) });
+    if (!res.ok) throw new StorageError(`copy failed (${res.status})`);
+  }
+
   async remove(keys: string[]) {
     if (!keys.length) return;
     keys.forEach(encodeKey);

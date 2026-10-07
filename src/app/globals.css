@@ -1152,7 +1152,7 @@ table.data code.tag-code, .tag-code {
 .hero::after { display: none; }
 /* below the hero: solid dark that dissolves, so the posters rise into view under the picture, never over it */
 .hero-fade { height: 110px; margin: -1px calc(-1 * var(--pad)) 0; pointer-events: none; background: linear-gradient(180deg, #0b0807, rgba(11, 8, 7, 0)); }
-.hero-art { position: absolute; top: 0; right: 0; bottom: 0; aspect-ratio: 819 / 760; max-width: 72%; z-index: -2; background: url("/img/hero-art.jpg") right bottom / 100% 100% no-repeat;
+.hero-art { position: absolute; top: 0; right: 0; bottom: 0; aspect-ratio: 819 / 760; max-width: 72%; z-index: -2; background: url("/img/hero-art-blank.jpg") right bottom / 100% 100% no-repeat;
   /* the box is exactly the picture's shape, so these fades land on the picture's own edges and it melts into the page */
   -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 38%), linear-gradient(180deg, transparent 0, #000 16%, #000 70%, transparent 100%);
   mask-image: linear-gradient(90deg, transparent 0, #000 38%), linear-gradient(180deg, transparent 0, #000 16%, #000 70%, transparent 100%);
@@ -1447,3 +1447,55 @@ figure.section figcaption h2 { margin-top: 0; }
   .writer-area { display: none; }
   .writer-nav { order: 3; width: 100%; margin-left: 0; overflow-x: auto; }
 }
+
+/* ═══ Creator Studio: the sign-up sheet, the profile photo, the studio hero with the writer's name on the chair ═══ */
+.auth-cinema:has(.signup-sheet) { place-items: start center; overflow: auto; padding: 40px 16px 60px; }
+.auth form.signup-sheet { position: relative; width: min(860px, 100%); max-width: 860px; margin: 0; padding: 30px clamp(18px, 4vw, 38px) 34px; border-radius: 22px; color: #f3ece0;
+  background: rgba(20, 15, 12, .78); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); border: 1px solid rgba(255, 255, 255, .16); box-shadow: 0 30px 70px -24px rgba(0, 0, 0, .8); }
+.auth .signup-sheet .subtle, .auth .signup-sheet .field { color: rgba(243, 236, 224, .7); }
+.auth .signup-sheet input, .auth .signup-sheet select, .auth .signup-sheet textarea { background: rgba(255, 255, 255, .07); color: #f3ece0; border: 1px solid rgba(255, 255, 255, .18); border-radius: 10px; padding: 10px 12px; font: inherit; width: 100%; }
+.auth .signup-sheet select option { background: #1a1512; color: #f3ece0; }
+.signup-eyebrow { margin: 0 0 6px; font-size: 11px; letter-spacing: .3em; text-transform: uppercase; color: var(--orange-2); }
+.signup-title { margin: 0 0 6px; font-family: "Archivo", system-ui, sans-serif; font-size: clamp(26px, 3.4vw, 38px); font-weight: 800; letter-spacing: -.02em; text-transform: none; color: #fff; }
+.pf-heading { margin: 26px 0 4px; font-size: 17px; text-transform: none; font-family: "Archivo", system-ui, sans-serif; font-weight: 700; color: #fff; }
+.pf-row { display: grid; gap: 10px 12px; align-items: end; margin: 10px 0; padding: 12px; border: 1px solid rgba(255, 255, 255, .1); border-radius: 12px; background: rgba(255, 255, 255, .03); position: relative; }
+.pf-credit { grid-template-columns: 2fr 1.3fr .7fr 1.6fr; padding-right: 44px; }
+.pf-link { grid-template-columns: 1fr 2fr; padding-right: 44px; }
+.pf-remove { position: absolute; right: 10px; top: 10px; width: 28px; height: 28px; border-radius: 50%; border: 1px solid rgba(255, 255, 255, .25); background: transparent; color: #fff; font-size: 18px; line-height: 1; cursor: pointer; }
+.pf-remove:hover { background: var(--orange); border-color: var(--orange); }
+@media (max-width: 760px) { .pf-credit, .pf-link { grid-template-columns: 1fr 1fr; } }
+.photo-box { display: flex; align-items: center; gap: 22px; margin-bottom: 8px; flex-wrap: wrap; }
+.photo-ring { width: 120px; height: 120px; border-radius: 50%; overflow: hidden; display: grid; place-items: center; font-size: 44px; color: rgba(255, 255, 255, .5); border: 2px dashed rgba(255, 255, 255, .3); background: rgba(255, 255, 255, .05); flex: none; }
+.photo-ring.has { border: 2px solid var(--orange); }
+.photo-ring img { width: 100%; height: 100%; object-fit: cover; display: block; }
+label.btn-inline { cursor: pointer; display: inline-block; }
+label.btn-inline.is-busy { opacity: .6; cursor: progress; }
+
+.hero-studio { min-height: 440px; padding-top: 56px; }
+.hero-studio .hero-art, .hero-studio .studio-chair { position: absolute; top: 0; right: 0; bottom: 0; aspect-ratio: 819 / 760; max-width: 64%; }
+.hero-studio .hero-art { background-image: url("/img/hero-art-blank.jpg"); }
+.hero-studio .studio-chair { z-index: -1; container-type: inline-size; pointer-events: none; }
+/* the chair back sits at about 31–54% across and 31–46% down the picture */
+.chair-name { position: absolute; left: 30.5%; top: 31.5%; width: 24%; height: 15%; display: grid; place-items: center; text-align: center; padding: 0 1%;
+  font-family: var(--serif); font-style: italic; font-weight: 700; line-height: 1.02; color: #d6c7a8; text-wrap: balance; overflow-wrap: break-word;
+  transform: rotate(-2.5deg) skewX(-3deg); text-shadow: 0 1px 0 rgba(0, 0, 0, .55), 0 0 10px rgba(255, 190, 110, .18); opacity: .94; }
+.cn-l { font-size: 5.6cqw; } .cn-m { font-size: 3.9cqw; } .cn-s { font-size: 2.7cqw; }
+@media (max-width: 900px) { .hero-studio { min-height: 0; padding-top: 30px; } .hero-studio .studio-chair { display: none; } }
+.auth .signup-sheet .btn-secondary { color: #f3ece0; background: rgba(255, 255, 255, .06); border-color: rgba(255, 255, 255, .3); }
+.auth .signup-sheet .btn-secondary:hover { background: rgba(255, 255, 255, .14); }
+.auth .signup-sheet .error { color: #ff8f80; }
+
+/* Pitch to / Production Houses */
+.house-pick { list-style: none; margin: 12px 0; padding: 0; display: grid; gap: 8px; }
+.house-pick li { padding: 10px 14px; border: 1px solid rgba(255,255,255,.14); border-radius: 12px; background: rgba(255,255,255,.04); }
+.house-pick li.sent { display: flex; justify-content: space-between; align-items: center; opacity: .8; }
+.house-pick label { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.send-results { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 4px; }
+.send-results .ok { color: #7bd88f; }
+.send-results .bad { color: #ff8a80; }
+.house-card { display: block; padding: 14px 16px; border: 1px solid rgba(255,255,255,.14); border-radius: 14px; background: rgba(255,255,255,.04); color: inherit; text-decoration: none; }
+.house-card:hover { border-color: rgba(255,255,255,.35); }
+.house-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); margin: 12px 0; }
+.house-card strong { display: block; font-size: 1.05rem; }
+.timeline { list-style: none; margin: 6px 0 0; padding: 0; font-size: .85rem; }
+.timeline li { color: rgba(255,255,255,.65); }

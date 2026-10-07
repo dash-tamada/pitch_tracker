@@ -1,21 +1,28 @@
 /**
- * Sending a platform-wide creator's draft to a company.
+ * Sending a platform-wide creator's pitch to production houses (companies) — as many as they like, any time.
  *
  * Everything inside the company runs on the same restricted creator role, through the same row-level-security policies,
  * the company's own creator portal uses (creatorDb) — a company never trusts anything a creator controls beyond what
  * that role is already allowed to write. The creator's company record carries no email or password (it is linked to the
- * platform-wide creator by public_creator_id) and its id is derived from (company, creator), so sending again is safe and
- * a person never gets two records in one company.
+ * platform-wide creator by public_creator_id) and its id is derived from (company, creator), so a person never gets two
+ * records in one company.
  *
- * Not one transaction (the company data and the platform-wide data live behind different database roles), so the steps are
- * ordered to fail safely: the draft is claimed first, and handed back (editable again) if the pitch could not be created.
+ * The pitch stays the writer's own and editable: each send COPIES the files into that company's storage area (public_draft_sends
+ * records the send, public_send_documents records which file went where). A file added after pitching is delivered to every
+ * house that already has the pitch, exactly once.
+ *
+ * Not one transaction (company data and platform-wide data live behind different database roles), so the steps are ordered
+ * to fail safely: the send row is only written once the company's pitch exists.
  */
 import { createHash, randomUUID } from "node:crypto";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { creatorDb } from "@/server/db/client";
 import type { Db } from "@/server/db/client";
-import { companies, creators, documents, documentVersions, lookupValues, publicCreators, publicDraftFiles, publicDrafts } from "@/server/db/schema";
+import {
+  companies, creators, documents, documentVersions, lookupValues, publicCreatorCredits, publicCreators, publicDraftFiles, publicDraftSends,
+  publicDrafts, publicSendDocuments,
+} from "@/server/db/schema";
 import { AppError, notFound } from "@/server/lib/errors";
 import { normalizeName } from "@/server/lib/pii";
 import { parseInput } from "@/server/lib/validation";
@@ -24,13 +31,7 @@ import { pgCode, pgConstraint } from "@/server/modules/creator-portal/auth";
 import { submitCreatorPitch } from "@/server/modules/creator-portal/pitch";
 import type { StoragePort } from "@/server/modules/storage/port";
 
-const sendSchema = z.object({ companyId: z.uuid() }).strict();
-
-/** Companies that are active and have not opted out. Names only: nothing else about a company is shown to creators. */
-export async function listSendableCompanies(db: Db) {
-  return db.select({ id: companies.id, name: companies.name }).from(companies)
-    .where(and(eq(companies.status, "ACTIVE"), eq(companies.acceptsCreatorSubmissions, true))).orderBy(asc(companies.name));
-}
+const sendSchema = z.object({ companyIds: z.array(z.uuid()).min(1).max(10) }).strict();
 
 /** A stable UUID (RFC 4122 v5 style) for "this platform-wide creator, inside this company". */
 export function companyCreatorId(companyId: string, publicCreatorId: string): string {
@@ -44,42 +45,91 @@ export function companyCreatorId(companyId: string, publicCreatorId: string): st
 /** Postgres RAISE EXCEPTION text from the portal's own gate functions → something a creator can act on. */
 function friendly(e: unknown): AppError | null {
   const msg = (e as { message?: string; cause?: { message?: string } })?.cause?.message ?? (e as { message?: string })?.message ?? "";
-  if (msg.includes("plan limit reached")) return new AppError("PLAN_LIMIT", "This company cannot accept more pitches right now.");
-  if (msg.includes("subscription not active")) return new AppError("COMPANY_UNAVAILABLE", "This company is not accepting pitches right now.");
-  if (msg.includes("no active workflow")) return new AppError("COMPANY_UNAVAILABLE", "This company is not set up to receive pitches yet.");
+  if (msg.includes("plan limit reached")) return new AppError("PLAN_LIMIT", "This production house cannot accept more pitches right now.");
+  if (msg.includes("subscription not active")) return new AppError("COMPANY_UNAVAILABLE", "This production house is not accepting pitches right now.");
+  if (msg.includes("no active workflow")) return new AppError("COMPANY_UNAVAILABLE", "This production house is not set up to receive pitches yet.");
   return null;
 }
 
-export interface SendResult { pitchId: string; company: string; filesSent: number; filesFailed: number }
+type FileRow = typeof publicDraftFiles.$inferSelect;
+interface Target { companyId: string; cid: string; pitchId: string; sendId: string }
 
-export async function sendDraftToCompany(
-  db: Db, creatorId: string, draftId: string, storage: StoragePort, raw: unknown, ctx: RequestContext = {}, now = new Date(),
+async function documentCategories(companyId: string, cid: string) {
+  const cdb = creatorDb(companyId, cid);
+  const rows = await cdb.select({ key: lookupValues.key }).from(lookupValues).where(sql`${lookupValues.type} = 'DOCUMENT_CATEGORY' AND ${lookupValues.active} = true`);
+  return new Set(rows.map((r) => r.key));
+}
+
+/** Copy one of the writer's files into one production house's pitch as a document. False when it could not be delivered. */
+async function deliverFile(db: Db, storage: StoragePort, t: Target, f: FileRow, known: Set<string>): Promise<boolean> {
+  const [already] = await db.select({ id: publicSendDocuments.id }).from(publicSendDocuments).where(and(eq(publicSendDocuments.sendId, t.sendId), eq(publicSendDocuments.fileId, f.id)));
+  if (already) return true;
+  const cdb = creatorDb(t.companyId, t.cid);
+  const versionId = randomUUID();
+  const ext = f.storageKey.slice(f.storageKey.lastIndexOf(".") + 1);
+  const finalKey = `company/${t.companyId}/pitches/${t.pitchId}/documents/${versionId}.${ext}`;
+  let copied = false;
+  try {
+    await cdb.execute(sql`SELECT public.creator_portal_check_upload_quota(${f.sizeBytes})`);
+    await storage.copy(f.storageKey, finalKey);
+    copied = true;
+    const documentId = randomUUID();
+    await cdb.insert(documents).values({ id: documentId, pitchId: t.pitchId, categoryKey: known.has(f.categoryKey) ? f.categoryKey : "OTHER", title: f.title, createdByCreatorId: t.cid });
+    await cdb.insert(documentVersions).values({
+      id: versionId, documentId, versionNo: 1, storageKey: finalKey, originalFilename: f.originalFilename, detectedMime: f.detectedMime,
+      sizeBytes: f.sizeBytes, sha256: f.sha256, scanStatus: "NOT_SCANNED", uploadedByCreatorId: t.cid,
+    });
+    await cdb.update(documents).set({ currentVersionId: versionId }).where(eq(documents.id, documentId));
+    await db.insert(publicSendDocuments).values({ sendId: t.sendId, fileId: f.id, documentId, storageKey: finalKey }).onConflictDoNothing();
+    return true;
+  } catch {
+    if (copied) await storage.remove([finalKey]).catch(() => undefined);
+    return false;
+  }
+}
+
+/** Put the writer's current profile onto their record inside the company, so the production house sees who is pitching. */
+async function syncProfile(db: Db, storage: StoragePort, companyId: string, cid: string, me: typeof publicCreators.$inferSelect) {
+  const credits = await db.select().from(publicCreatorCredits).where(eq(publicCreatorCredits.creatorId, me.id)).orderBy(asc(publicCreatorCredits.createdAt));
+  const lines = credits.map((c) => `• ${c.projectTitle} — ${c.credit}${c.releaseYear ? ` (${c.releaseYear})` : ""}`);
+  const bio = [me.bio, lines.length ? `Credits:\n${lines.join("\n")}` : null].filter(Boolean).join("\n\n").slice(0, 5000) || null;
+  const links = [
+    ...(me.imdbUrl ? [{ label: "IMDB", url: me.imdbUrl }] : []),
+    ...(me.showreelUrl ? [{ label: "Showreel", url: me.showreelUrl }] : []),
+    ...((me.otherLinks as { label: string; url: string }[] | null) ?? []),
+  ].slice(0, 12);
+  const set: Record<string, unknown> = {
+    fullName: me.fullName, nameNormalized: normalizeName(me.fullName), creatorType: me.creatorType, yearsExperience: me.experienceYears, bio, socialLinks: links,
+    profileCompletedAt: me.profileCompletedAt,
+  };
+  if (me.profileImageKey) {
+    const ext = me.profileImageKey.slice(me.profileImageKey.lastIndexOf(".") + 1);
+    const key = `company/${companyId}/creators/${cid}/photo-${randomUUID()}.${ext}`;
+    try { await storage.copy(me.profileImageKey, key); set.profileImageKey = key; } catch { /* the pitch matters more than the photo */ }
+  }
+  await creatorDb(companyId, cid).update(creators).set(set as never).where(eq(creators.id, cid));
+}
+
+export interface SendResult { companyId: string; company: string; ok: boolean; pitchId?: string; filesSent?: number; filesFailed?: number; error?: string }
+
+async function sendToOne(
+  db: Db, me: typeof publicCreators.$inferSelect, draft: typeof publicDrafts.$inferSelect, files: FileRow[], companyId: string, storage: StoragePort, ctx: RequestContext,
 ): Promise<SendResult> {
-  const { companyId } = parseInput(sendSchema, raw);
   const [company] = await db.select({ id: companies.id, name: companies.name }).from(companies)
     .where(and(eq(companies.id, companyId), eq(companies.status, "ACTIVE"), eq(companies.acceptsCreatorSubmissions, true)));
-  if (!company) throw new AppError("NOT_FOUND", "That company is not accepting pitches.");
+  if (!company) return { companyId, company: "That production house", ok: false, error: "It is not accepting pitches." };
+  const fail = (error: string): SendResult => ({ companyId, company: company.name, ok: false, error });
 
-  const [me] = await db.select().from(publicCreators).where(eq(publicCreators.id, creatorId));
-  const [draft] = await db.select().from(publicDrafts).where(and(eq(publicDrafts.id, draftId), eq(publicDrafts.creatorId, creatorId)));
-  if (!me || !draft) throw notFound("Draft");
-  if (draft.status !== "DRAFT") throw new AppError("CONFLICT", "This pitch has already been sent.");
-  if (!draft.formatKey || !draft.languageKey) throw new AppError("VALIDATION", "Choose a format and a language before sending your pitch.", { formatKey: "Required", languageKey: "Required" });
+  const [existing] = await db.select({ id: publicDraftSends.id }).from(publicDraftSends).where(and(eq(publicDraftSends.draftId, draft.id), eq(publicDraftSends.companyId, companyId)));
+  if (existing) return fail("This pitch is already with them.");
 
-  // Claim the draft so a double click or a second tab cannot send it twice.
-  const [claimed] = await db.update(publicDrafts).set({ status: "SENT", sentCompanyId: companyId, sentAt: now, updatedAt: now })
-    .where(and(eq(publicDrafts.id, draftId), eq(publicDrafts.creatorId, creatorId), eq(publicDrafts.status, "DRAFT"))).returning({ id: publicDrafts.id });
-  if (!claimed) throw new AppError("CONFLICT", "This pitch has already been sent.");
-  const release = () => db.update(publicDrafts).set({ status: "DRAFT", sentCompanyId: null, sentAt: null }).where(eq(publicDrafts.id, draftId));
-
-  const cid = companyCreatorId(companyId, creatorId);
+  const cid = companyCreatorId(companyId, me.id);
   let pitchId: string;
   try {
-    // 1) the creator's record inside the company
     const reg = creatorDb(companyId, null);
     const base = {
       id: cid, creatorType: me.creatorType as (typeof creators.$inferInsert)["creatorType"], fullName: me.fullName, nameNormalized: normalizeName(me.fullName),
-      selfRegistered: true, portalStatus: "ACTIVE" as const, publicCreatorId: creatorId,
+      selfRegistered: true, portalStatus: "ACTIVE" as const, publicCreatorId: me.id,
     };
     try {
       await reg.insert(creators).values({ ...base, mobileE164: me.mobileE164 });
@@ -89,47 +139,55 @@ export async function sendDraftToCompany(
       if (c === "creators_company_mobile_uq") await reg.insert(creators).values(base).onConflictDoNothing(); // the company already has someone with this number
       else if (c !== "creators_pkey" && c !== "creators_company_public_creator_uq") throw e;                  // already there: fine
     }
-    // 2) the pitch, through the portal's own submission gate (plan limits, subscription, pitch numbering)
+    await syncProfile(db, storage, companyId, cid, me).catch(() => undefined);
     const body: Record<string, unknown> = { title: draft.title, formatKey: draft.formatKey, languageKey: draft.languageKey };
     const optional: [string, unknown][] = [["logline", draft.logline], ["shortSynopsis", draft.shortSynopsis], ["detailedSynopsis", draft.detailedSynopsis],
       ["genreKey", draft.genreKey], ["episodeCount", draft.episodeCount], ["episodeDurationMin", draft.episodeDurationMin], ["targetAudience", draft.targetAudience], ["notes", draft.notes]];
     for (const [k, v] of optional) if (v !== null && v !== undefined) body[k] = v;
     pitchId = (await submitCreatorPitch(companyId, cid, body, ctx)).pitchId;
   } catch (e) {
-    await release();
-    throw friendly(e) ?? e;
+    const f = friendly(e);
+    if (f) return fail(f.message);
+    throw e;
   }
 
-  // 3) the files: moved (not copied) into the company's own storage area and recorded as the pitch's documents
-  const files = await db.select().from(publicDraftFiles).where(eq(publicDraftFiles.draftId, draftId));
-  const cdb = creatorDb(companyId, cid);
-  const known = new Set((await cdb.select({ key: lookupValues.key }).from(lookupValues).where(sql`${lookupValues.type} = 'DOCUMENT_CATEGORY' AND ${lookupValues.active} = true`)).map((r) => r.key));
+  const [send] = await db.insert(publicDraftSends).values({ draftId: draft.id, creatorId: me.id, companyId, companyPitchId: pitchId }).onConflictDoNothing().returning({ id: publicDraftSends.id });
+  if (!send) return fail("This pitch is already with them.");
+  const t: Target = { companyId, cid, pitchId, sendId: send.id };
+  const known = await documentCategories(companyId, cid);
   let sent = 0, failed = 0;
-  for (const f of files) {
-    const versionId = randomUUID();
-    const ext = f.storageKey.slice(f.storageKey.lastIndexOf(".") + 1);
-    const finalKey = `company/${companyId}/pitches/${pitchId}/documents/${versionId}.${ext}`;
-    let moved = false;
-    try {
-      await cdb.execute(sql`SELECT public.creator_portal_check_upload_quota(${f.sizeBytes})`);
-      await storage.move(f.storageKey, finalKey);
-      moved = true;
-      const documentId = randomUUID();
-      await cdb.insert(documents).values({ id: documentId, pitchId, categoryKey: known.has(f.categoryKey) ? f.categoryKey : "OTHER", title: f.title, createdByCreatorId: cid });
-      await cdb.insert(documentVersions).values({
-        id: versionId, documentId, versionNo: 1, storageKey: finalKey, originalFilename: f.originalFilename, detectedMime: f.detectedMime,
-        sizeBytes: f.sizeBytes, sha256: f.sha256, scanStatus: "NOT_SCANNED", uploadedByCreatorId: cid,
-      });
-      await cdb.update(documents).set({ currentVersionId: versionId }).where(eq(documents.id, documentId));
-      await db.update(publicDraftFiles).set({ storageKey: finalKey }).where(eq(publicDraftFiles.id, f.id)); // the creator's own link keeps working
-      sent++;
-    } catch {
-      failed++;
-      if (moved) await storage.move(finalKey, f.storageKey).catch(() => undefined); // put it back so the creator still has it
-    }
-  }
+  for (const f of files) { if (await deliverFile(db, storage, t, f, known)) sent++; else failed++; }
+  await writeAudit(db, { actorId: null, action: "creator.pitch_sent", resourceType: "public_draft", resourceId: draft.id, after: { companyId, pitchId, files: sent, filesFailed: failed } }, ctx);
+  return { companyId, company: company.name, ok: true, pitchId, filesSent: sent, filesFailed: failed };
+}
 
-  await db.update(publicDrafts).set({ sentPitchId: pitchId }).where(eq(publicDrafts.id, draftId));
-  await writeAudit(db, { actorId: null, action: "creator.pitch_sent", resourceType: "public_draft", resourceId: draftId, after: { companyId, pitchId, files: sent, filesFailed: failed } }, ctx);
-  return { pitchId, company: company.name, filesSent: sent, filesFailed: failed };
+export async function sendDraftToCompanies(
+  db: Db, creatorId: string, draftId: string, storage: StoragePort, raw: unknown, ctx: RequestContext = {},
+): Promise<{ results: SendResult[] }> {
+  const { companyIds } = parseInput(sendSchema, raw);
+  const [me] = await db.select().from(publicCreators).where(eq(publicCreators.id, creatorId));
+  const [draft] = await db.select().from(publicDrafts).where(and(eq(publicDrafts.id, draftId), eq(publicDrafts.creatorId, creatorId)));
+  if (!me || !draft) throw notFound("Draft");
+  if (!draft.formatKey || !draft.languageKey) throw new AppError("VALIDATION", "Choose a format and a language before sending your pitch.", { formatKey: "Required", languageKey: "Required" });
+  const files = await db.select().from(publicDraftFiles).where(eq(publicDraftFiles.draftId, draftId)).orderBy(asc(publicDraftFiles.createdAt));
+  const results: SendResult[] = [];
+  for (const id of [...new Set(companyIds)]) {
+    try { results.push(await sendToOne(db, me, draft, files, id, storage, ctx)); }
+    catch { results.push({ companyId: id, company: "A production house", ok: false, error: "Something went wrong sending to them. Try again." }); }
+  }
+  return { results };
+}
+
+/** A file added after pitching goes to every production house that already has the pitch. Best effort: the writer's own copy is safe. */
+export async function deliverToExistingSends(db: Db, storage: StoragePort, draftId: string, fileId: string): Promise<void> {
+  const [f] = await db.select().from(publicDraftFiles).where(eq(publicDraftFiles.id, fileId));
+  if (!f) return;
+  const sends = await db.select().from(publicDraftSends).where(eq(publicDraftSends.draftId, draftId));
+  for (const s of sends) {
+    const cid = companyCreatorId(s.companyId, s.creatorId);
+    try {
+      const known = await documentCategories(s.companyId, cid);
+      await deliverFile(db, storage, { companyId: s.companyId, cid, pitchId: s.companyPitchId, sendId: s.id }, f, known);
+    } catch { /* leave it undelivered; the writer's copy is kept */ }
+  }
 }

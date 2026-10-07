@@ -2,11 +2,12 @@ import { randomInt } from "node:crypto";
 import { and, desc, eq, gt, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { Db } from "@/server/db/client";
-import { companies, loginOtps, users } from "@/server/db/schema";
+import { companies, loginOtps, publicCreators, users } from "@/server/db/schema";
 import { AppError } from "@/server/lib/errors";
 import { maskEmail, normalizeMobile } from "@/server/lib/pii";
 import { parseInput } from "@/server/lib/validation";
 import { writeAudit, type RequestContext } from "@/server/modules/audit/service";
+import { startPublicSession, type PublicSession } from "@/server/modules/public-creators/session";
 import { BLOCKED_COMPANY_STATUSES, issueSession, type LoginResult } from "./service";
 import { hashIdentifier, hashToken, newToken, safeEqual } from "./tokens";
 import { sendWhatsappOtp } from "./whatsapp";
@@ -31,10 +32,14 @@ export const BAD_CODE = () => new AppError("INVALID_CREDENTIALS", "That code is 
 
 const mobileSchema = z.object({ mobile: z.string().trim().min(5).max(24) }).strict();
 const verifySchema = z.object({ mobile: z.string().trim().min(5).max(24), code: z.string().trim().regex(/^\d{6}$/) }).strict();
-const chooseSchema = z.object({ choiceToken: z.string().min(20).max(128), userId: z.uuid() }).strict();
+// a staff user id, or "creator:<id>" for the writer account on the same number
+const chooseSchema = z.object({ choiceToken: z.string().min(20).max(128), userId: z.string().regex(/^(creator:)?[0-9a-fA-F-]{36}$/) }).strict();
 
 export interface AccountChoice { userId: string; company: string; name: string; email: string }
-export type OtpVerifyResult = ({ kind: "session" } & LoginResult) | { kind: "choose"; choiceToken: string; accounts: AccountChoice[] };
+export type OtpVerifyResult =
+  | ({ kind: "session" } & LoginResult)
+  | ({ kind: "creator" } & PublicSession)
+  | { kind: "choose"; choiceToken: string; accounts: AccountChoice[] };
 
 const codeHash = (otpId: string, code: string) => hashToken(`otp:${otpId}:${code}`);
 
@@ -114,13 +119,20 @@ async function eligibleAccounts(db: Db, e164: string) {
   return rows.filter((r) => !BLOCKED_COMPANY_STATUSES.has(r.companyStatus));
 }
 
+/** The writer account on this number, if there is a live one. */
+async function creatorOn(db: Db, e164: string) {
+  const [c] = await db.select().from(publicCreators).where(eq(publicCreators.mobileE164, e164));
+  return c && !c.disabledAt ? c : null;
+}
+
 /** Always resolves the same way whether or not the number is registered, so it cannot be used to find out who has an account. */
 export async function requestOtp(db: Db, raw: unknown, ctx: RequestContext = {}, now = new Date()): Promise<{ sent: true }> {
   const { mobile } = parseInput(mobileSchema, raw);
   const e164 = validMobile(mobile);
   const issued = await issueCode(db, e164, ctx, now);
   const accounts = await eligibleAccounts(db, e164);
-  if (accounts.length > 0) {
+  // A number is known if it belongs to a staff account, a writer account, or both — the page cannot tell which.
+  if (accounts.length > 0 || (await creatorOn(db, e164))) {
     await deliverCode(db, e164, issued);
     await writeAudit(db, { companyId: accounts.length === 1 ? accounts[0]!.u.companyId : null, actorId: null, action: "auth.otp_requested", resourceType: "auth" }, ctx);
   }
@@ -134,27 +146,43 @@ export async function verifyOtp(db: Db, raw: unknown, ctx: RequestContext = {}, 
   const otpId = await checkCode(db, e164, code, ctx, now);
 
   const accounts = await eligibleAccounts(db, e164);
-  if (accounts.length === 0) throw BAD_CODE();
-  if (accounts.length === 1) {
+  const writer = await creatorOn(db, e164);
+  const total = accounts.length + (writer ? 1 : 0);
+  if (total === 0) throw BAD_CODE();
+  if (total === 1) {
     await db.update(loginOtps).set({ verifiedAt: now, consumedAt: now }).where(eq(loginOtps.id, otpId));
+    if (writer) {
+      await writeAudit(db, { actorId: null, action: "creator.login", resourceType: "public_creator", resourceId: writer.id }, ctx);
+      return { kind: "creator", ...(await startPublicSession(db, writer.id, ctx, now)) };
+    }
     const u = accounts[0]!.u;
     return { kind: "session", ...(await issueSession(db, u, { emailHash: hashIdentifier(u.email), ip: ctx.ip ?? null }, ctx, now)) };
   }
-  // More than one account on this number: the code is proven, now let the person pick one.
+  // More than one account on this number (staff in one or more companies, and/or a writer): the code is proven, now let the person pick.
   const choiceToken = newToken();
   await db.update(loginOtps).set({ verifiedAt: now, choiceTokenHash: hashToken(choiceToken), choiceExpiresAt: new Date(now.getTime() + OTP_TTL_MS) }).where(eq(loginOtps.id, otpId));
-  return { kind: "choose", choiceToken, accounts: accounts.map((a) => ({ userId: a.u.id, company: a.companyName, name: a.u.fullName, email: maskEmail(a.u.email) ?? "" })) };
+  const choices: AccountChoice[] = accounts.map((a) => ({ userId: a.u.id, company: a.companyName, name: a.u.fullName, email: maskEmail(a.u.email) ?? "" }));
+  if (writer) choices.push({ userId: `creator:${writer.id}`, company: "Creator Studio", name: writer.fullName, email: "Writer / director" });
+  return { kind: "choose", choiceToken, accounts: choices };
 }
 
-export async function chooseOtpAccount(db: Db, raw: unknown, ctx: RequestContext = {}, now = new Date()): Promise<LoginResult> {
+export type ChooseResult = ({ kind: "session" } & LoginResult) | ({ kind: "creator" } & PublicSession);
+
+export async function chooseOtpAccount(db: Db, raw: unknown, ctx: RequestContext = {}, now = new Date()): Promise<ChooseResult> {
   const { choiceToken, userId } = parseInput(chooseSchema, raw);
   // Single use: claiming the row and consuming it is one statement.
   const [otp] = await db.update(loginOtps).set({ consumedAt: now })
     .where(and(eq(loginOtps.choiceTokenHash, hashToken(choiceToken)), isNull(loginOtps.consumedAt), gt(loginOtps.choiceExpiresAt, now))).returning();
   if (!otp) throw BAD_CODE();
+  if (userId.startsWith("creator:")) {
+    const [c] = await db.select().from(publicCreators).where(eq(publicCreators.id, userId.slice("creator:".length)));
+    if (!c || c.disabledAt || !safeEqual(hashIdentifier(c.mobileE164).toString("hex"), otp.mobileHash.toString("hex"))) throw BAD_CODE();
+    await writeAudit(db, { actorId: null, action: "creator.login", resourceType: "public_creator", resourceId: c.id }, ctx);
+    return { kind: "creator", ...(await startPublicSession(db, c.id, ctx, now)) };
+  }
   const [user] = await db.select({ mobile: users.mobileE164 }).from(users).where(eq(users.id, userId));
   if (!user?.mobile || !safeEqual(hashIdentifier(user.mobile).toString("hex"), otp.mobileHash.toString("hex"))) throw BAD_CODE();
   const account = (await eligibleAccounts(db, user.mobile)).find((a) => a.u.id === userId);
   if (!account) throw BAD_CODE();
-  return issueSession(db, account.u, { emailHash: hashIdentifier(account.u.email), ip: ctx.ip ?? null }, ctx, now);
+  return { kind: "session", ...(await issueSession(db, account.u, { emailHash: hashIdentifier(account.u.email), ip: ctx.ip ?? null }, ctx, now)) };
 }

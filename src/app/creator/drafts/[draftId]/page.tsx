@@ -6,29 +6,24 @@ import { CreatorSendPanel } from "@/components/creator-send-panel";
 import { WriterShell, creatorNav } from "@/components/writer-shell";
 import { CreatorLogoutButton } from "@/components/creator-logout-button";
 import { getPlatformDb } from "@/server/db/client";
-import { requirePublicCreator } from "@/server/lib/public-creator-page";
+import { requireStudio } from "@/server/lib/public-creator-page";
 import { FILE_CATEGORIES, FORMATS, GENRES, LANGUAGES, getMyDraft } from "@/server/modules/public-creators/drafts";
-import { listSendableCompanies } from "@/server/modules/public-creators/send";
-import { companies } from "@/server/db/schema";
-import { eq } from "drizzle-orm";
+import { housesPitchWentTo, listAcceptingHouses } from "@/server/modules/public-creators/studio";
 
 export default async function DraftPage({ params }: { params: Promise<{ draftId: string }> }) {
   await connection();
-  const creator = await requirePublicCreator();
+  const creator = await requireStudio();
   const { draftId } = await params;
   if (!/^[0-9a-f-]{36}$/i.test(draftId)) notFound();
-  const { draft, files } = await getMyDraft(getPlatformDb(), creator.creatorId, draftId).catch(() => notFound());
-  const readOnly = draft.status !== "DRAFT";
   const db = getPlatformDb();
-  const sentTo = draft.sentCompanyId ? (await db.select({ name: companies.name }).from(companies).where(eq(companies.id, draft.sentCompanyId)))[0]?.name : undefined;
-  const options = readOnly ? [] : await listSendableCompanies(db);
+  const { draft, files } = await getMyDraft(db, creator.creatorId, draftId).catch(() => notFound());
+  const [houses, sentIds] = await Promise.all([listAcceptingHouses(db), housesPitchWentTo(db, creator.creatorId, draftId)]);
   return (
     <WriterShell area="Creator studio" nav={creatorNav("pitches")} actions={<CreatorLogoutButton />}>
       <p className="back-link"><a href="/creator">&larr; Your pitches</a></p>
-      {readOnly && <p className="success">Sent{sentTo ? ` to ${sentTo}` : ""}{draft.sentAt ? ` on ${draft.sentAt.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric", timeZone: "Asia/Kolkata" })}` : ""}. It can no longer be edited here.</p>}
-      <CreatorDraftForm draft={draft} formats={FORMATS} languages={LANGUAGES} genres={GENRES} readOnly={readOnly} />
-      <CreatorDraftFiles draftId={draft.id} files={files.map((f) => ({ id: f.id, title: f.title, categoryKey: f.categoryKey, originalFilename: f.originalFilename, sizeBytes: f.sizeBytes }))} categories={FILE_CATEGORIES} readOnly={readOnly} />
-          {!readOnly && <CreatorSendPanel draftId={draft.id} companies={options} />}
+      <CreatorDraftForm draft={draft} formats={FORMATS} languages={LANGUAGES} genres={GENRES} />
+      <CreatorDraftFiles draftId={draft.id} files={files.map((f) => ({ id: f.id, title: f.title, categoryKey: f.categoryKey, originalFilename: f.originalFilename, sizeBytes: f.sizeBytes }))} categories={FILE_CATEGORIES} sentCount={sentIds.length} />
+      <CreatorSendPanel draftId={draft.id} houses={houses} sentIds={sentIds} />
     </WriterShell>
   );
 }

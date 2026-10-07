@@ -11,6 +11,7 @@ import type { Db } from "@/server/db/client";
 import { publicDraftFiles, publicDraftUploads, publicDrafts } from "@/server/db/schema";
 import { AppError, notFound } from "@/server/lib/errors";
 import { parseInput } from "@/server/lib/validation";
+import { deliverToExistingSends } from "./send";
 import { MAX_UPLOAD_BYTES, SIGNED_URL_TTL_SECONDS } from "@/server/modules/storage";
 import { DOCUMENT_TYPES, detectAndValidate, extensionOf, sanitizeFilename } from "@/server/modules/storage/file-type";
 import type { StoragePort } from "@/server/modules/storage/port";
@@ -36,9 +37,6 @@ async function ownDraft(db: Db, creatorId: string, draftId: string) {
   const [d] = await db.select().from(publicDrafts).where(and(eq(publicDrafts.id, draftId), eq(publicDrafts.creatorId, creatorId)));
   if (!d) throw notFound("Draft");
   return d;
-}
-function assertEditable(d: { status: string }) {
-  if (d.status !== "DRAFT") throw new AppError("CONFLICT", "This pitch has already been sent and can no longer be edited here.");
 }
 function values(input: z.infer<typeof draftSchema>) {
   const episodic = input.formatKey ? EPISODIC.has(input.formatKey) : false;
@@ -68,14 +66,14 @@ export async function getMyDraft(db: Db, creatorId: string, draftId: string) {
 }
 
 export async function updateDraft(db: Db, creatorId: string, draftId: string, raw: unknown): Promise<{ ok: true }> {
-  assertEditable(await ownDraft(db, creatorId, draftId));
+  await ownDraft(db, creatorId, draftId);
   const input = parseInput(draftSchema, raw);
   await db.update(publicDrafts).set({ ...values(input), updatedAt: new Date() }).where(and(eq(publicDrafts.id, draftId), eq(publicDrafts.creatorId, creatorId)));
   return { ok: true };
 }
 
 export async function deleteDraft(db: Db, creatorId: string, draftId: string, storage: StoragePort): Promise<{ ok: true }> {
-  assertEditable(await ownDraft(db, creatorId, draftId));
+  await ownDraft(db, creatorId, draftId);
   const files = await db.select({ key: publicDraftFiles.storageKey }).from(publicDraftFiles).where(eq(publicDraftFiles.draftId, draftId));
   await db.delete(publicDrafts).where(and(eq(publicDrafts.id, draftId), eq(publicDrafts.creatorId, creatorId)));
   await storage.remove(files.map((f) => f.key)).catch(() => undefined);
@@ -91,7 +89,7 @@ const intentSchema = z.object({
 }).strict();
 
 export async function createUploadIntent(db: Db, creatorId: string, draftId: string, storage: StoragePort, raw: unknown, now = new Date()) {
-  assertEditable(await ownDraft(db, creatorId, draftId));
+  await ownDraft(db, creatorId, draftId);
   const input = parseInput(intentSchema, raw);
   const ext = extensionOf(input.filename);
   if (!(ext in DOCUMENT_TYPES)) throw new AppError("VALIDATION", `Allowed file types: ${[...new Set(Object.keys(DOCUMENT_TYPES))].join(", ").toUpperCase()}.`, { filename: "Type not allowed" });
@@ -111,7 +109,7 @@ export async function createUploadIntent(db: Db, creatorId: string, draftId: str
 }
 
 export async function completeUpload(db: Db, creatorId: string, draftId: string, intentId: string, storage: StoragePort, now = new Date()) {
-  assertEditable(await ownDraft(db, creatorId, draftId));
+  await ownDraft(db, creatorId, draftId);
   const [intent] = await db.select().from(publicDraftUploads)
     .where(and(eq(publicDraftUploads.id, intentId), eq(publicDraftUploads.draftId, draftId), eq(publicDraftUploads.creatorId, creatorId)));
   if (!intent) throw notFound("Upload");
@@ -144,11 +142,12 @@ export async function completeUpload(db: Db, creatorId: string, draftId: string,
     await storage.remove([finalKey]).catch(() => undefined);
     throw e;
   }
+  await deliverToExistingSends(db, storage, draftId, fileId); // a document added after pitching reaches every house that already has it
   return { fileId };
 }
 
 export async function removeFile(db: Db, creatorId: string, draftId: string, fileId: string, storage: StoragePort): Promise<{ ok: true }> {
-  assertEditable(await ownDraft(db, creatorId, draftId));
+  await ownDraft(db, creatorId, draftId);
   const [f] = await db.select().from(publicDraftFiles).where(and(eq(publicDraftFiles.id, fileId), eq(publicDraftFiles.draftId, draftId), eq(publicDraftFiles.creatorId, creatorId)));
   if (!f) throw notFound("File");
   await db.delete(publicDraftFiles).where(eq(publicDraftFiles.id, f.id));

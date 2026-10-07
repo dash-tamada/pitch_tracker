@@ -1,45 +1,33 @@
 import Link from "next/link";
 
 /**
- * The cinematic masthead on the dashboard: artwork on the right (served from /public — the CSP is `img-src 'self'`),
- * a headline with one brush-stroked word, and the two entry buttons. Embers drift left to right behind the text; their
- * positions, sizes and speeds are fixed classes (.dust-1 … .dust-16) because the CSP forbids inline styles, and the motion
- * is switched off under prefers-reduced-motion.
+ * The dashboard masthead: a compact banner — the studio artwork on the right (served from /public; the CSP is
+ * `img-src 'self'`), a headline with one brush-stroked word, and the two entry points. It is deliberately short so the
+ * numbers and the work waiting for you sit above the fold; the dashboard is a place to act, not a landing page.
  */
-const DUST = Array.from({ length: 16 }, (_, i) => i + 1);
-
 export function HeroBanner({ name, canCreate }: { name: string; canCreate: boolean }) {
   return (
     <section className="hero">
       <div className="hero-art" aria-hidden="true" />
-      <div className="dust" aria-hidden="true">
-        {DUST.map((n) => <span key={n} className={`dust-${n}`} />)}
-      </div>
       <div className="hero-copy">
-        <p className="hero-eyebrow"><span>Story Pipeline</span></p>
+        <p className="hero-eyebrow"><span>{name} · Story pipeline</span></p>
         <h1 className="hero-title">
-          <span className="hl">Every story,</span>
-          <span className="hl hero-brush">tracked
+          Every story, <span className="hero-brush">tracked
             <svg className="hero-stroke" viewBox="0 0 380 26" preserveAspectRatio="none" aria-hidden="true">
               <path d="M4 17 C 80 7, 160 19, 250 10 S 350 9, 376 13" />
-              <path d="M30 22 C 120 15, 210 23, 330 17" />
             </svg>
-          </span>
-          <span className="hl">from pitch</span>
-          <span className="hl">to screen</span>
+          </span> from pitch to screen
         </h1>
-        <p className="hero-sub">
-          Who has it, at which level, since when, what they said and what happens next — {name}&rsquo;s whole slate in one place.
-        </p>
+        <p className="hero-sub">Who has each story, at which level, since when — and what happens next.</p>
         <div className="hero-cta">
           {canCreate && (
             <Link className="pill pill-fire" href="/pitches/new">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
               New pitch
             </Link>
           )}
           <Link className="pill pill-ghost" href="/pitches">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4.5v15l13-7.5-13-7.5Z" /></svg>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4.5v15l13-7.5-13-7.5Z" /></svg>
             View all pitches
           </Link>
         </div>

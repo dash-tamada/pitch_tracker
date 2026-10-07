@@ -3,7 +3,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Clapboard, useClap } from "./clapboard";
 import { soundEnabled } from "./film-sound";
-import { announceTake, newTake, saveTake, type Take } from "./viewfinder";
+import { announceTake, newTake, type Take } from "./viewfinder";
 
 function csrfToken(): string {
   const name = document.cookie.includes("__Host-pt_csrf=") ? "__Host-pt_csrf" : "pt_csrf";
@@ -47,7 +47,7 @@ export function LoginForm({ initialStep, google = false, whatsapp = false, urlEr
 
   // Signed in: the slate gets a fresh scene and take, remembered for the dashboard's camera overlay.
   useEffect(() => {
-    if (step === "ready" && !shot) { const t = newTake(); saveTake(t); setShot(t); }
+    if (step === "ready" && !shot) { const t = newTake(); setShot(t); }
   }, [step, shot]);
 
   function go(next: Step) { setError(null); setStep(next); }

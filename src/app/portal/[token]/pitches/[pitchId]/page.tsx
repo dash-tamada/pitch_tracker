@@ -8,6 +8,8 @@ import { getMyPitch } from "@/server/modules/creator-portal/pitch";
 import { listMyPitchDocuments } from "@/server/modules/creator-portal/documents";
 import { DocumentViewButton } from "@/components/document-view-button";
 import { PortalUploadPanel } from "@/components/portal-upload-panel";
+import { WriterShell, portalNav } from "@/components/writer-shell";
+import { PortalLogoutButton } from "@/components/portal-logout-button";
 
 const STAGE_LABEL: Record<string, string> = { REJECTED: "Rejected", APPROVED: "Approved" };
 
@@ -31,13 +33,13 @@ export default async function PortalPitchDetailPage({ params }: { params: Promis
   const categories = (lookups.DOCUMENT_CATEGORY ?? []).filter((l) => l.active);
 
   return (
-    <main className="main">
+    <WriterShell area="Creator portal" nav={portalNav(token, "pitches")} actions={<PortalLogoutButton token={token} />}>
       <div className="page-head">
         <div>
           <h1 className="page-title">{pitch.title}</h1>
           <p className="subtle">{pitch.pitchCode} · {pitch.formatKey} · {pitch.languageKey}</p>
         </div>
-        <a className="btn-secondary" href={`/portal/${token}/pitches`}>Back to your pitches</a>
+        <a className="btn-secondary" href={`/portal/${token}/pitches`}>&larr; Your pitches</a>
       </div>
 
       <span className={`badge ${rejected ? "b-rejected" : pitch.currentStageKey === "APPROVED" ? "b-approved" : "b-new"}`}>
@@ -82,6 +84,6 @@ export default async function PortalPitchDetailPage({ params }: { params: Promis
       ) : (
         <PortalUploadPanel token={token} pitchId={pitch.id} categories={categories} />
       )}
-    </main>
+    </WriterShell>
   );
 }

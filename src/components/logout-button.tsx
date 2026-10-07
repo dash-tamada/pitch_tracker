@@ -1,44 +1,30 @@
 "use client";
 
 import { useState } from "react";
-import { createPortal } from "react-dom";
 import { api } from "./client-api";
-import { soundEnabled } from "./film-sound";
-import { CUT_EVENT, loadTake, speak } from "./viewfinder";
-
-const HOLD_MS = 10_000; // how long "Shot OK" stays up before the sign-in screen
 
 /**
- * "Cut": stops the camera overlay recording, calls "Shot OK" over the blurred page with the take and clip number from
- * this login, signs the person out, then returns to the sign-in screen after ten seconds. The overlay is drawn straight on
- * <body>: the top bar this button lives in is animated, and an animated ancestor would pin a "fixed" overlay to the bar.
+ * Log out: ends the session and goes straight to the sign-in screen.
+ *
+ * It lands on /login?signedout=1 rather than plain /login so that, on a developer machine running the local
+ * DEV_AUTO_LOGIN shortcut, logging out actually stays logged out instead of being signed straight back in.
  */
 export function LogoutButton() {
-  const [shot, setShot] = useState<{ take: string; clip: string } | null>(null);
+  const [busy, setBusy] = useState(false);
 
-  async function cut() {
-    if (shot) return;
-    const t = loadTake();
-    setShot({ take: t?.take ?? "001", clip: t?.clip ?? "C001" });
-    window.dispatchEvent(new Event(CUT_EVENT));
-    speak("Shot OK", soundEnabled());
-    const began = Date.now();
+  async function logout() {
+    if (busy) return;
+    setBusy(true);
     try { await api("POST", "/api/v1/auth/logout"); } catch { /* leave anyway: the session ends on its own */ }
-    window.setTimeout(() => window.location.assign("/login"), Math.max(0, HOLD_MS - (Date.now() - began)));
+    window.location.assign("/login?signedout=1");
   }
 
   return (
-    <>
-      <button className="btn-secondary cut-btn" onClick={cut} disabled={Boolean(shot)} aria-label="Cut: stop recording and sign out"><span className="cut-ico" aria-hidden="true" />Cut</button>
-      {shot && createPortal(
-        <div className="cut-overlay" role="status" aria-live="assertive">
-          <div className="cut-card">
-            <p className="cut-shot">Shot OK</p>
-            <p className="cut-meta"><span>Take <b>{shot.take}</b></span><span>Clip <b>{shot.clip}</b></span></p>
-          </div>
-        </div>,
-        document.body,
-      )}
-    </>
+    <button type="button" className="btn-secondary logout-btn" onClick={logout} disabled={busy}>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="m16 17 5-5-5-5" /><path d="M21 12H9" />
+      </svg>
+      {busy ? "Logging out…" : "Log out"}
+    </button>
   );
 }

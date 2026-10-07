@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { requireCreatorPageSession } from "@/server/lib/creator-page-session";
 import { listMyPitches } from "@/server/modules/creator-portal/pitch";
+import { WriterShell, portalNav } from "@/components/writer-shell";
 import { PortalLogoutButton } from "@/components/portal-logout-button";
 
 const STAGE_LABEL: Record<string, string> = { REJECTED: "Rejected", APPROVED: "Approved" };
@@ -16,16 +17,14 @@ export default async function PortalPitchesPage({ params }: { params: Promise<{ 
   const pitches = await listMyPitches(companyId, creator.creatorId);
 
   return (
-    <main className="main">
+    <WriterShell area="Creator portal" nav={portalNav(token, "pitches")} actions={<PortalLogoutButton token={token} />}>
       <div className="page-head">
         <div>
           <h1 className="page-title">Your pitches</h1>
           <p className="subtle">Submit a new pitch, or open one below to upload your script.</p>
         </div>
         <div className="head-actions">
-          <a className="btn-inline" href={`/portal/${token}/pitches/new`}>New pitch</a>
-          <a className="btn-secondary" href={`/portal/${token}/profile`}>My profile</a>
-          <PortalLogoutButton token={token} />
+          <a className="btn-inline" href={`/portal/${token}/pitches/new`}>+ New pitch</a>
         </div>
       </div>
 
@@ -33,20 +32,20 @@ export default async function PortalPitchesPage({ params }: { params: Promise<{ 
         <p className="empty">You haven&apos;t submitted a pitch yet.</p>
       ) : (
         <div className="table-wrap">
-          <table>
+          <table className="data">
             <thead><tr><th>Pitch code</th><th>Title</th><th>Format</th><th>Status</th><th>Submitted</th><th /></tr></thead>
             <tbody>
               {pitches.map((p) => (
                 <tr key={p.id}>
-                  <td>{p.pitchCode}</td>
-                  <td>{p.title}</td>
+                  <td className="cell-code">{p.pitchCode}</td>
+                  <td><a href={`/portal/${token}/pitches/${p.id}`}>{p.title}</a></td>
                   <td>{p.formatKey}</td>
                   <td>
                     <span className={`badge ${p.currentStageKey === "REJECTED" ? "b-rejected" : p.currentStageKey === "APPROVED" ? "b-approved" : "b-new"}`}>
                       {STAGE_LABEL[p.currentStageKey] ?? p.currentStageKey}
                     </span>
                   </td>
-                  <td>{new Date(p.createdAt).toLocaleDateString()}</td>
+                  <td className="nowrap muted">{new Date(p.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric", timeZone: "Asia/Kolkata" })}</td>
                   <td><a href={`/portal/${token}/pitches/${p.id}`}>Open</a></td>
                 </tr>
               ))}
@@ -54,6 +53,6 @@ export default async function PortalPitchesPage({ params }: { params: Promise<{ 
           </table>
         </div>
       )}
-    </main>
+    </WriterShell>
   );
 }

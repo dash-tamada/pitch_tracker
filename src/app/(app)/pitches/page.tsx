@@ -94,17 +94,16 @@ export default async function PitchesPage({ searchParams }: { searchParams: Prom
       {page && page.items.length === 0 && <Empty>No pitches match.</Empty>}
       {page && page.items.length > 0 && view === "table" && (
         <div className="table-wrap"><table className="data">
-          <thead><tr><th>Pitch</th><th>Creator</th><th>Format · Language</th><th>Status</th><th>With</th><th>Waiting</th><th>Rating</th><th>Updated</th></tr></thead>
+          <thead><tr><th>Pitch</th><th>Creator</th><th>Format</th><th>Status</th><th>With</th><th>Waiting</th><th>Rating</th></tr></thead>
           <tbody>{page.items.map((p) => (
             <tr key={p.id}>
-              <td><Link href={`/pitches/${p.id}`}>{p.title}</Link><div className="muted">{p.pitchCode}{p.priority === "HIGH" || p.priority === "URGENT" ? ` · ${p.priority}` : ""}</div></td>
-              <td>{p.creatorName}<div className="muted">{typeLabel(p.creatorType)}</div></td>
-              <td>{labelOf(lookups, "FORMAT", p.formatKey)} · {labelOf(lookups, "LANGUAGE", p.languageKey)}</td>
+              <td className="cell-title"><Link href={`/pitches/${p.id}`}>{p.title}</Link><div className="cell-code">{p.pitchCode}{p.priority === "HIGH" || p.priority === "URGENT" ? <span className="prio">{p.priority}</span> : null}</div></td>
+              <td className="nowrap">{p.creatorName}<div className="muted">{typeLabel(p.creatorType)}</div></td>
+              <td>{labelOf(lookups, "FORMAT", p.formatKey)}<div className="muted">{labelOf(lookups, "LANGUAGE", p.languageKey)}</div></td>
               <td><StageBadge badge={p.stageBadge} label={p.stageName ?? p.currentStageKey} /></td>
-              <td>{p.ownerName ?? "—"}</td>
-              <td>{p.daysWaiting} d</td>
-              <td><Stars value={p.avgRating} /></td>
-              <td>{fmtDate(p.updatedAt)}</td>
+              <td className="nowrap">{p.ownerName ?? "—"}</td>
+              <td className="nowrap num">{p.daysWaiting} d<div className="muted cell-sub">upd. {fmtDate(p.updatedAt)}</div></td>
+              <td className="nowrap">{p.avgRating === null || p.avgRating === undefined ? <span className="muted">—</span> : <Stars value={p.avgRating} />}</td>
             </tr>
           ))}</tbody>
         </table></div>

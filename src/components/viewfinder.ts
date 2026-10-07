@@ -11,7 +11,6 @@ export interface Take {
   startSeconds: number; // where the timecode starts, in seconds from midnight
 }
 
-const KEY = "pt_take";
 const pick = <T,>(a: readonly T[]): T => a[Math.floor(Math.random() * a.length)]!;
 const int = (lo: number, hi: number) => Math.floor(lo + Math.random() * (hi - lo + 1));
 const pad = (n: number, w: number) => String(n).padStart(w, "0");
@@ -38,14 +37,6 @@ export function newTake(): Take {
   };
 }
 
-export function saveTake(t: Take): void {
-  try { window.sessionStorage.setItem(KEY, JSON.stringify(t)); } catch { /* storage blocked: the overlay just makes its own */ }
-}
-
-export function loadTake(): Take | null {
-  try { const v = window.sessionStorage.getItem(KEY); return v ? (JSON.parse(v) as Take) : null; } catch { return null; }
-}
-
 /** Says a line through the browser's speech engine, when there is one and sound is on. */
 export function speak(text: string, soundOn: boolean): void {
   try {
@@ -60,12 +51,4 @@ export function speak(text: string, soundOn: boolean): void {
 /** "Take 42". */
 export const announceTake = (take: string, soundOn: boolean) => speak(`Take ${Number(take)}`, soundOn);
 
-/** Fired when the person calls "Cut": the camera overlay stops recording. */
-export const CUT_EVENT = "pt:cut";
 
-/** hh:mm:ss:ff from a running frame count. */
-export function timecode(startSeconds: number, frames: number, fps: number): string {
-  const f = Math.floor(frames) % Math.round(fps);
-  const total = startSeconds + Math.floor(frames / Math.round(fps));
-  return `${pad(Math.floor(total / 3600) % 24, 2)}:${pad(Math.floor(total / 60) % 60, 2)}:${pad(total % 60, 2)}:${pad(f, 2)}`;
-}

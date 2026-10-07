@@ -3,6 +3,7 @@ import { creatorDb } from "@/server/db/client";
 import { requireCreatorPageSession } from "@/server/lib/creator-page-session";
 import { getMyProfile } from "@/server/modules/creator-portal/profile";
 import { getLookups } from "@/server/modules/lookups/service";
+import { WriterShell, portalNav } from "@/components/writer-shell";
 import { PortalLogoutButton } from "@/components/portal-logout-button";
 import { PortalPasswordForm } from "@/components/portal-password-form";
 import { PortalProfileForm } from "@/components/portal-profile-form";
@@ -17,7 +18,7 @@ export default async function PortalProfilePage({ params }: { params: Promise<{ 
   const active = (t: string) => (lookups[t] ?? []).filter((l) => l.active);
 
   return (
-    <main className="main">
+    <WriterShell area="Creator portal" nav={portalNav(token, "profile")} actions={<PortalLogoutButton token={token} />}>
       <div className="page-head">
         <div>
           <h1 className="page-title">{profile.profileCompleted ? "My profile" : "Set up your profile"}</h1>
@@ -27,14 +28,10 @@ export default async function PortalProfilePage({ params }: { params: Promise<{ 
               : "Complete your profile before submitting your first pitch."}
           </p>
         </div>
-        <div className="head-actions">
-          {profile.profileCompleted && <a className="btn-secondary" href={`/portal/${token}/pitches`}>Back to your pitches</a>}
-          <PortalLogoutButton token={token} />
-        </div>
       </div>
       <PortalProfileForm token={token} languages={active("LANGUAGE")} initial={profile} />
       <PortalProjectsPanel token={token} languages={active("LANGUAGE")} genres={active("GENRE")} initial={projects} />
       <PortalPasswordForm token={token} />
-    </main>
+    </WriterShell>
   );
 }

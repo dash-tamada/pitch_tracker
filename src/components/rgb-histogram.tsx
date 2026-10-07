@@ -1,48 +1,22 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { BINS, normalise, sampleScreen, type Bins } from "./screen-histogram";
-import { CUT_EVENT, loadTake, newTake, saveTake, timecode, type Take } from "./viewfinder";
 
 /**
- * The camera-monitor overlay on the dashboard: a thin frame with corner handles, a settings bar along the top, a status bar
- * along the bottom, a blinking REC light and a running timecode. The settings are random per login (see viewfinder.ts).
- * It never takes pointer events, and is drawn entirely with classes because the CSP forbids inline styles.
+ * The live RGB colour histogram on the right edge of every signed-in page, like a camera monitor's scope.
+ *
+ * It started life inside the full camera overlay; the overlay's frame, settings bars and timecode were removed in the
+ * UI refinement pass, and the histogram was kept on its own, drawn and behaving exactly as before: re-sampled whenever
+ * the page scrolls or changes (at most ~7 times a second, plus a slow poll for changes without scrolling), eased towards
+ * its new shape, and never taking pointer events. Drawn on a canvas because the CSP forbids inline styles.
  */
-export function ViewfinderHud() {
-  const [t, setT] = useState<Take | null>(null);
-  const [tc, setTc] = useState("--:--:--:--");
-  const [cut, setCut] = useState(false);
+export function RgbHistogram() {
   const histRef = useRef<HTMLCanvasElement | null>(null);
 
-  // "Cut": the timecode freezes and the REC light goes out
-  useEffect(() => {
-    const stop = () => setCut(true);
-    window.addEventListener(CUT_EVENT, stop);
-    return () => window.removeEventListener(CUT_EVENT, stop);
-  }, []);
-
-  useEffect(() => {
-    let cur = loadTake();
-    if (!cur) { cur = newTake(); saveTake(cur); }
-    setT(cur);
-  }, []);
-
-  useEffect(() => {
-    if (!t || cut) return;
-    const fps = Number(t.fps);
-    const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
-    const began = performance.now();
-    const tick = () => setTc(timecode(t.startSeconds, ((performance.now() - began) / 1000) * fps, fps));
-    tick();
-    const id = window.setInterval(tick, reduced ? 1000 : Math.round(1000 / fps));
-    return () => window.clearInterval(id);
-  }, [t, cut]);
-
-  // The colour histogram: re-sampled whenever the page scrolls or changes, and eased towards its new shape.
   useEffect(() => {
     const canvas = histRef.current;
-    if (!t || cut || !canvas) return;
+    if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     const W = 56, H = 180, TOP = 6, BOTTOM = 18, rowH = (H - TOP - BOTTOM) / BINS;
@@ -106,34 +80,7 @@ export function ViewfinderHud() {
       window.removeEventListener("resize", schedule);
       window.clearInterval(poll); window.clearTimeout(timer); cancelAnimationFrame(raf);
     };
-  }, [t, cut]);
+  }, []);
 
-  if (!t) return null;
-  return (
-    <div className="vf" aria-hidden="true">
-      <div className="vf-frame">
-        {["tl", "tr", "bl", "br", "tm", "bm", "ml", "mr"].map((p) => <span key={p} className={`vf-h vf-h-${p}`} />)}
-        <span className="vf-cross" />
-      </div>
-      <canvas ref={histRef} className="vf-hist" />
-      <div className="vf-bar vf-top">
-        <span>FPS <b>{t.fps}</b></span>
-        <span>SHUTTER <b>{t.shutter}</b></span>
-        <span>IRIS <b>{t.iris}</b> 0/10</span>
-        <span>EI <b>{t.ei}</b></span>
-        <span>ND <b>{t.nd}</b></span>
-        <span>WB <b>{t.wb}</b> <b>{t.cc}</b></span>
-        <span className="vf-side">{t.side}</span>
-      </div>
-      <div className="vf-bar vf-bottom">
-        <span>FCL <b>{t.fcl}</b></span>
-        <span>BAT <b>{t.bat}</b></span>
-        <span><b>{t.cam}</b> <b>{t.clip}</b></span>
-        <span className="vf-tilt">ROLL <b>{t.roll}</b> TILT <b>{t.tilt}</b></span>
-        <span className={cut ? "vf-rec vf-stopped" : "vf-rec"}><i className="vf-dot" /> {cut ? "STBY" : "REC"}</span>
-        <span>MEDIA <b>{t.media}</b></span>
-        <span>TC <b>{tc}</b></span>
-      </div>
-    </div>
-  );
+  return <canvas ref={histRef} className="vf-hist" aria-hidden="true" />;
 }

@@ -40,7 +40,7 @@ export default async function AnalyticsPage() {
           <tbody>{r.byPlatform.map((p) => <tr key={p.platformId}><td><Link href={`/platforms/${p.platformId}`}>{p.name}</Link></td><td>{p.pitched}</td><td>{p.interested}</td><td>{p.approved}</td><td>{p.rejected}</td><td>{p.onHold}</td><td>{p.approvalRate ?? "—"}{p.approvalRate !== null && "%"}</td></tr>)}</tbody></table>
       </section>
       <section className="section"><h2>Creator report</h2>
-        <table className="data"><thead><tr><th>Creator</th><th>Pitches</th><th>CEO/COO approved</th><th>Approval rate</th></tr></thead>
+        <table className="data"><thead><tr><th>Creator</th><th>Pitches</th><th>Approved for platform</th><th>Approval rate</th></tr></thead>
           <tbody>{r.byCreator.map((c) => <tr key={c.creatorId}><td><Link href={`/creators/${c.creatorId}`}>{c.name}</Link></td><td>{c.total}</td><td>{c.approved}</td><td>{c.approvalRate ?? "—"}{c.approvalRate !== null && "%"}</td></tr>)}</tbody></table>
       </section>
       <section className="section"><h2>Employee report</h2>

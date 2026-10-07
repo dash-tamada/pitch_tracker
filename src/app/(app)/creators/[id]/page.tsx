@@ -63,7 +63,7 @@ export default async function CreatorProfilePage({ params, searchParams }: { par
             <Stat label="Under review" value={stats.underReview} />
             <Stat label="Forwarded" value={stats.forwarded} hint="Pitches forwarded or accepted by a reviewer at least once" />
             <Stat label="Accepted" value={stats.accepted} hint="Pitches a reviewer accepted and recommended" />
-            <Stat label="CEO/COO approved" value={stats.approved} />
+            <Stat label="Approved for platform" value={stats.approved} />
             <Stat label="Rejected" value={stats.rejected} />
             <Stat label="Sent to platforms" value={stats.sentToPlatforms} />
             <Stat label="Platform approved" value={stats.platformApproved} />
@@ -76,7 +76,7 @@ export default async function CreatorProfilePage({ params, searchParams }: { par
           <div className="section">
             <h2>Success rates</h2>
             <dl className="kv">
-              <dt>CEO/COO approval</dt><dd>{stats.rates.approvalRate ?? "—"}{stats.rates.approvalRate !== null && "%"} <span className="muted">of all pitches</span></dd>
+              <dt>Approval rate</dt><dd>{stats.rates.approvalRate ?? "—"}{stats.rates.approvalRate !== null && "%"} <span className="muted">of all pitches</span></dd>
               <dt>Platform approval</dt><dd>{stats.rates.platformApprovalRate ?? "—"}{stats.rates.platformApprovalRate !== null && "%"} <span className="muted">of pitches sent to platforms</span></dd>
               <dt>Reached production</dt><dd>{stats.rates.productionRate ?? "—"}{stats.rates.productionRate !== null && "%"} <span className="muted">of all pitches</span></dd>
             </dl>

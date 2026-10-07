@@ -273,7 +273,10 @@ export async function getPitchDetail(db: Db, actor: Actor, pitchId: string, now 
     rejectionCategoryKey: workflowEvents.rejectionCategoryKey, rejectionReason: workflowEvents.rejectionReason, toStageKey: workflowEvents.toStageKey })
     .from(workflowEvents).where(eq(workflowEvents.pitchId, pitchId)).orderBy(asc(workflowEvents.seq));
   const ownerSince = [...events].reverse().find((e) => e.toOwnerId !== e.fromOwnerId || e.action === "SUBMIT")?.createdAt ?? p.pitch.stageEnteredAt;
-  const executive = [...events].reverse().find((e) => ["SEND_TO_PLATFORM", "APPROVE"].includes(e.action));
+  // The sign-off that cleared the story for platform pitching. Matched on where the event LED rather than on which
+  // action was used: since the CEO/COO review stage was removed, Senior Review's ACCEPT is the usual route there,
+  // and the old SEND_TO_PLATFORM / APPROVE events from before the change still count.
+  const executive = [...events].reverse().find((e) => e.toStageKey === "APPROVED_FOR_PLATFORM" && e.action !== "ASSIGN");
   const lastRejection = [...events].reverse().find((e) => e.action === "REJECT");
   const approvedPlatformEvent = [...events].reverse().find((e) => e.action === "MARK_PLATFORM_APPROVED");
   const [approvedPlatform] = approvedPlatformEvent?.platformId

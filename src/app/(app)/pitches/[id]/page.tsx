@@ -72,7 +72,7 @@ export default async function PitchDetailPage({ params, searchParams }: { params
           <div><div className="label">Waiting since</div><div className="val">{fmtDate(s.stageSince)}</div></div>
           <div><div className="label">Days in current stage</div><div className={`val aging-${s.aging}`}>{s.daysInStage} days{s.aging !== "ok" ? ` · ${s.aging}` : ""}</div></div>
           <div><div className="label">Rejected?</div><div className="val">{s.wasRejected ? `Yes — ${labelOf(lookups, "REJECTION_CATEGORY", s.rejection?.categoryKey)}` : "No"}</div></div>
-          <div><div className="label">CEO / COO approved?</div><div className="val">{s.executiveDecision ? `Yes — ${s.executiveDecision.by ?? s.executiveDecision.approvalType}, ${fmtDate(s.executiveDecision.at)}` : "No"}</div></div>
+          <div><div className="label">Approved for platform?</div><div className="val">{s.executiveDecision ? `Yes — ${s.executiveDecision.by ?? s.executiveDecision.approvalType}, ${fmtDate(s.executiveDecision.at)}` : "No"}</div></div>
           <div><div className="label">Platform</div><div className="val">{s.latestPlatform ? `${s.latestPlatform.name} · ${PLATFORM_STATUS_LABEL[s.latestPlatform.status] ?? s.latestPlatform.status}` : "Not pitched"}</div></div>
           <div><div className="label">Rating</div><div className="val"><Stars value={s.rating} /> <span className="muted">({s.ratingCount})</span></div></div>
         </div>
@@ -349,7 +349,7 @@ async function CreatorTab({ actor, creatorId }: { actor: Actor; creatorId: strin
       <dl className="kv">
         <dt>Mobile</dt><dd>{c.mobile ?? "—"}</dd><dt>Email</dt><dd>{c.email ?? "—"}</dd><dt>Location</dt><dd>{c.location ?? "—"}</dd>
         <dt>Experience</dt><dd>{c.yearsExperience ?? "—"} years</dd><dt>Total pitches</dt><dd>{profile.stats.total}</dd>
-        <dt>CEO/COO approved</dt><dd>{profile.stats.approved}</dd><dt>Platform approved</dt><dd>{profile.stats.platformApproved}</dd>
+        <dt>Approved for platform</dt><dd>{profile.stats.approved}</dd><dt>Platform approved</dt><dd>{profile.stats.platformApproved}</dd>
       </dl>
       {c.bio && <p>{c.bio}</p>}
     </div>

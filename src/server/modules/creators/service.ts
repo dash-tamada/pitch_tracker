@@ -274,7 +274,7 @@ export async function creatorStats(db: DbOrTx, actor: Actor, creatorId: string) 
     ...stats,
     // Definitions shown in the UI so the numbers can be checked:
     rates: {
-      approvalRate: rate(stats.approved, stats.total),                       // % of pitches CEO/COO approved
+      approvalRate: rate(stats.approved, stats.total),                       // % of pitches approved for platform pitching
       platformApprovalRate: rate(stats.platformApproved, stats.sentToPlatforms), // % of platform-pitched stories approved
       productionRate: rate(stats.production, stats.total),
     },

@@ -25,6 +25,8 @@ export function proxy(request: NextRequest) {
 
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-nonce", nonce);
+  // The page a session-less visitor asked for, so the local DEV_AUTO_LOGIN shortcut can return them to it.
+  requestHeaders.set("x-pathname", request.nextUrl.pathname + request.nextUrl.search);
   requestHeaders.set("Content-Security-Policy", csp);
   const response = NextResponse.next({ request: { headers: requestHeaders } });
   response.headers.set("Content-Security-Policy", csp);

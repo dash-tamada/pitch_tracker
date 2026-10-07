@@ -1,17 +1,22 @@
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { CameraIntro } from "@/components/camera-intro";
 import { LoginForm } from "@/components/login-form";
 import { PosterWall } from "@/components/poster-wall";
 import { getPlatformDb } from "@/server/db/client";
 import { SESSION_COOKIE } from "@/server/lib/http";
+import { devAutoLoginEmail } from "@/server/modules/auth/dev-auto-login";
 import { googleEnabled } from "@/server/modules/auth/google";
 import { resolveSession } from "@/server/modules/auth/service";
 import { whatsappOtpEnabled } from "@/server/modules/auth/whatsapp";
 
-export default async function LoginPage({ searchParams }: { searchParams: Promise<{ step?: string; error?: string; admin?: string; ready?: string }> }) {
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ step?: string; error?: string; admin?: string; ready?: string; real?: string; signedout?: string }> }) {
   await connection(); // dynamic rendering so the CSP nonce is applied
-  const { step, error, admin, ready } = await searchParams;
+  const { step, error, admin, ready, real, signedout } = await searchParams;
+  // Local DEV_AUTO_LOGIN: go straight into the app. ?real=1 still shows this page, for working on it, and arriving
+  // from Log out (?signedout=1) stays on it — otherwise logging out would sign you straight back in.
+  if (devAutoLoginEmail() && real !== "1" && signedout !== "1" && !step && !error && !ready) redirect("/api/dev/auto-login");
   const mfa = step === "mfa";
   const whatsapp = whatsappOtpEnabled();
   // Everyone signs in with a mobile number + WhatsApp code or Google; email and password stay only for platform administrators.

@@ -1,6 +1,7 @@
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { getPlatformDb } from "@/server/db/client";
+import { devAutoLoginEmail } from "@/server/modules/auth/dev-auto-login";
 import { resolveSession, type SessionInfo } from "@/server/modules/auth/service";
 import { SESSION_COOKIE } from "./http";
 
@@ -21,7 +22,15 @@ export async function requirePlatformPageSession(): Promise<SessionInfo> {
 async function verifiedSession(): Promise<SessionInfo> {
   const token = (await cookies()).get(SESSION_COOKIE())?.value;
   const session = await resolveSession(getPlatformDb(), token);
-  if (!session) redirect("/login");
+  if (!session) {
+    // Local development shortcut (DEV_AUTO_LOGIN): sign in automatically and come straight back here.
+    // Only when there is no session at all — a session that is mid sign-in must not loop through it.
+    if (devAutoLoginEmail()) {
+      const here = (await headers()).get("x-pathname") ?? "/dashboard";
+      redirect(`/api/dev/auto-login?next=${encodeURIComponent(here)}`);
+    }
+    redirect("/login");
+  }
   // A platform-assigned temp password must be replaced before anything else, including MFA enrolment.
   if (session.passwordChangeRequired) redirect("/change-password");
   if (!session.mfaVerified) redirect("/login?step=mfa");

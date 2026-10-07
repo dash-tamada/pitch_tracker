@@ -1338,3 +1338,24 @@ table.data code.tag-code, .tag-code {
 /* the camera overlay's colour histogram: R, G and B on the right edge, redrawn from what is on screen as you scroll */
 .vf-hist { position: absolute; right: 22px; top: 50%; width: 56px; height: 180px; margin-top: -90px; border: 1px solid rgba(111, 134, 255, .5); border-radius: 3px; }
 @media (max-width: 700px) { .vf-hist { display: none; } }
+
+/* ═══ line-art film-making doodles behind the app that follow the cursor (src/components/film-doodles.tsx) ═══ */
+.fd-layer { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
+.fd {
+  position: absolute; color: #f7f1e4; will-change: transform;
+  opacity: calc(.2 + var(--near, 0) * .65);
+  filter: drop-shadow(0 0 calc(var(--near, 0) * 9px) rgba(255, 140, 50, calc(var(--near, 0) * .85)));
+}
+.fd svg { display: block; width: 100%; height: auto; overflow: visible; }
+/* every stroke has pathLength=1, so how much of the line is drawn is one number: the closer the cursor, the more is drawn */
+.fd svg * { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1; stroke-dashoffset: calc(.5 - var(--near, 0) * .5); }
+.fd-1 { left: 25vw; top: 17vh; width: 150px; transform: rotate(-7deg); }
+.fd-2 { left: 76vw; top: 13vh; width: 140px; transform: rotate(6deg); }
+.fd-3 { left: 52vw; top: 11vh; width: 120px; }
+.fd-4 { left: 90vw; top: 42vh; width: 120px; transform: rotate(-10deg); }
+.fd-5 { left: 31vw; top: 60vh; width: 140px; transform: rotate(8deg); }
+.fd-6 { left: 62vw; top: 70vh; width: 170px; transform: rotate(4deg); }
+.fd-7 { left: 88vw; top: 76vh; width: 150px; transform: rotate(-4deg); }
+.fd-8 { left: 44vw; top: 38vh; width: 130px; transform: rotate(5deg); }
+.fd-9 { left: 24vw; top: 82vh; width: 130px; transform: rotate(-9deg); }
+@media (max-width: 900px), (pointer: coarse) { .fd-layer { display: none; } }

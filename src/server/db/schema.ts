@@ -1060,3 +1060,11 @@ export const userInvitations = pgTable("user_invitations", {
   invitedById: uuid("invited_by_id"),
   createdAt: createdAt(),
 }, (t) => [uniqueIndex("user_invitations_token_uq").on(t.tokenHash)]);
+
+/** Staff have seen this incoming pitch (company-wide): until a row exists, the "new pitch received" pop-up keeps showing. */
+export const pitchIntakeAcks = pgTable("pitch_intake_acks", {
+  companyId: companyId(),
+  pitchId: uuid("pitch_id").primaryKey().references(() => pitches.id, { onDelete: "cascade" }),
+  acknowledgedBy: uuid("acknowledged_by").references(() => users.id),
+  acknowledgedAt: timestamp("acknowledged_at", { withTimezone: true }).notNull().defaultNow(),
+});

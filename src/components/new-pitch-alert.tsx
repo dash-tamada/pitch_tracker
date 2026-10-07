@@ -23,7 +23,8 @@ export function NewPitchAlert({ items }: { items: Incoming[] }) {
   }
 
   return (
-    <div className="intake-alert" role="alertdialog" aria-labelledby="intake-h" aria-live="assertive">
+    <div className="intake-overlay">
+    <div className="intake-alert" role="alertdialog" aria-modal="true" aria-labelledby="intake-h" aria-live="assertive">
       <div className="intake-head">
         <span className="intake-ico" aria-hidden="true">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3 7 9 6 9-6" /></svg>
@@ -44,6 +45,7 @@ export function NewPitchAlert({ items }: { items: Incoming[] }) {
         <button type="button" className="btn-inline" disabled={busy} onClick={() => ack()}>Mark as seen</button>
         <button type="button" className="btn-secondary" disabled={busy} onClick={() => ack("/pitches")}>Open pitches</button>
       </div>
+    </div>
     </div>
   );
 }

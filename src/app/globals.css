@@ -1499,3 +1499,8 @@ label.btn-inline.is-busy { opacity: .6; cursor: progress; }
 .house-card strong { display: block; font-size: 1.05rem; }
 .timeline { list-style: none; margin: 6px 0 0; padding: 0; font-size: .85rem; }
 .timeline li { color: rgba(255,255,255,.65); }
+
+/* the studio masthead runs edge to edge; only the content under it keeps the reading width */
+.writer-shell .main:has(.dash) { max-width: none; padding-top: 0; }
+.writer-shell .dash > :not(.hero):not(.hero-fade) { max-width: 1080px; margin-left: auto; margin-right: auto; }
+.writer-shell .dash > .cards, .writer-shell .dash > .section { width: 100%; }

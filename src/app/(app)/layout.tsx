@@ -9,6 +9,7 @@ import { unreadCount } from "@/server/modules/notifications/service";
 import { companyBranding } from "@/server/modules/tenancy/company";
 import { LogoutButton } from "@/components/logout-button";
 import { NavLinks } from "@/components/nav-links";
+import { FilmDoodles } from "@/components/film-doodles";
 import { PosterBackdrop } from "@/components/poster-wall";
 import { ViewfinderHud } from "@/components/viewfinder-hud";
 
@@ -49,6 +50,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <div className="shell has-vf">
       <PosterBackdrop />
+      <FilmDoodles />
       <ViewfinderHud />
       {color && <style nonce={nonce}>{`:root{--accent:${color}}`}</style>}
       <nav className="nav" aria-label="Main">

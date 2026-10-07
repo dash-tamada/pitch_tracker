@@ -2,12 +2,12 @@ import { connection } from "next/server";
 import { CreatorDraftForm } from "@/components/creator-draft-form";
 import { WriterShell, creatorNav } from "@/components/writer-shell";
 import { CreatorLogoutButton } from "@/components/creator-logout-button";
-import { requirePublicCreator } from "@/server/lib/public-creator-page";
+import { requireStudio } from "@/server/lib/public-creator-page";
 import { FORMATS, GENRES, LANGUAGES } from "@/server/modules/public-creators/drafts";
 
 export default async function NewDraftPage() {
   await connection();
-  await requirePublicCreator();
+  await requireStudio();
   return (
     <WriterShell area="Creator studio" nav={creatorNav("new")} actions={<CreatorLogoutButton />}>
       <CreatorDraftForm formats={FORMATS} languages={LANGUAGES} genres={GENRES} />

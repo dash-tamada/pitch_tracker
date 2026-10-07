@@ -169,7 +169,26 @@ export const publicCreators = pgTable("public_creators", {
   createdAt: createdAt(),
   lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
   disabledAt: timestamp("disabled_at", { withTimezone: true }),
+  /** Profile (drizzle/0014_creator_studio.sql): a photo is required before the studio opens. */
+  profileImageKey: text("profile_image_key"),
+  experienceYears: integer("experience_years"),
+  bio: varchar("bio", { length: 2000 }),
+  imdbUrl: varchar("imdb_url", { length: 500 }),
+  showreelUrl: varchar("showreel_url", { length: 500 }),
+  otherLinks: jsonb("other_links").$type<{ label: string; url: string }[]>().notNull().default(sql`'[]'::jsonb`),
+  profileCompletedAt: timestamp("profile_completed_at", { withTimezone: true }),
 }, (t) => [uniqueIndex("public_creators_mobile_uq").on(t.mobileE164)]);
+
+/** The projects a writer has worked on, with the credit they held. */
+export const publicCreatorCredits = pgTable("public_creator_credits", {
+  id: id(),
+  creatorId: uuid("creator_id").notNull().references(() => publicCreators.id, { onDelete: "cascade" }),
+  projectTitle: varchar("project_title", { length: 200 }).notNull(),
+  credit: varchar("credit", { length: 120 }).notNull(),
+  releaseYear: integer("release_year"),
+  link: varchar("link", { length: 500 }),
+  createdAt: createdAt(),
+}, (t) => [index("public_creator_credits_creator_idx").on(t.creatorId)]);
 
 export const publicCreatorSessions = pgTable("public_creator_sessions", {
   id: id(),
@@ -233,6 +252,29 @@ export const publicDraftFiles = pgTable("public_draft_files", {
   storageKey: text("storage_key").notNull(),
   createdAt: createdAt(),
 }, (t) => [index("public_draft_files_draft_idx").on(t.draftId)]);
+
+/** One row per (pitch, production house): where a writer's pitch has been sent. The company-side pitch id lets us read its status. */
+export const publicDraftSends = pgTable("public_draft_sends", {
+  id: id(),
+  draftId: uuid("draft_id").notNull().references(() => publicDrafts.id, { onDelete: "cascade" }),
+  creatorId: uuid("creator_id").notNull().references(() => publicCreators.id, { onDelete: "cascade" }),
+  companyId: uuid("company_id").notNull(),
+  companyPitchId: uuid("company_pitch_id").notNull(),
+  sentAt: timestamp("sent_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("public_draft_sends_draft_company_uq").on(t.draftId, t.companyId),
+  index("public_draft_sends_creator_idx").on(t.creatorId, t.companyId),
+]);
+
+/** Which of a pitch's files has been delivered into which production house, so a late upload reaches each house exactly once. */
+export const publicSendDocuments = pgTable("public_send_documents", {
+  id: id(),
+  sendId: uuid("send_id").notNull().references(() => publicDraftSends.id, { onDelete: "cascade" }),
+  fileId: uuid("file_id").notNull().references(() => publicDraftFiles.id, { onDelete: "cascade" }),
+  documentId: uuid("document_id").notNull(),
+  storageKey: text("storage_key").notNull(),
+  createdAt: createdAt(),
+}, (t) => [uniqueIndex("public_send_documents_uq").on(t.sendId, t.fileId)]);
 
 export const roles = pgTable("roles", {
   companyId: companyId(),

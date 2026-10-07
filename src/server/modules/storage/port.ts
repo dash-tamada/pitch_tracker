@@ -5,6 +5,8 @@ export interface StoragePort {
   /** Server-side read (for validation). Returns null if the object does not exist. */
   download(key: string, maxBytes: number): Promise<Buffer | null>;
   move(fromKey: string, toKey: string): Promise<void>;
+  /** Server-side copy; the source stays where it is. */
+  copy(fromKey: string, toKey: string): Promise<void>;
   remove(keys: string[]): Promise<void>;
   /**
    * Short-lived read URL. By default `downloadName` forces Content-Disposition: attachment (a download prompt).

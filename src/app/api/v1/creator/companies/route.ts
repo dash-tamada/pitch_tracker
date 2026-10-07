@@ -1,5 +1,5 @@
 import { ok } from "@/server/lib/http";
 import { publicCreatorRoute } from "@/server/lib/public-creator-http";
-import { listSendableCompanies } from "@/server/modules/public-creators/send";
+import { listAcceptingHouses } from "@/server/modules/public-creators/studio";
 
-export const GET = publicCreatorRoute({}, async ({ db }) => ok({ companies: await listSendableCompanies(db) }));
+export const GET = publicCreatorRoute({}, async ({ db }) => ok({ companies: await listAcceptingHouses(db) }));

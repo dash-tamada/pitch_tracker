@@ -99,6 +99,13 @@
       "when": 1790340000000,
       "tag": "0013_send_to_company",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1790430000000,
+      "tag": "0014_creator_studio",
+      "breakpoints": true
     }
   ]
 }

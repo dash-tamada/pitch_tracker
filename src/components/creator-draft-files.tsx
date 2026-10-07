@@ -7,7 +7,7 @@ type Opt = [string, string];
 interface FileRow { id: string; title: string; categoryKey: string; originalFilename: string; sizeBytes: number }
 
 /** Upload scripts and material to a draft: ask for a one-time URL, send the file straight to storage, then ask the server to verify it. */
-export function CreatorDraftFiles({ draftId, files, categories, readOnly = false }: { draftId: string; files: FileRow[]; categories: Opt[]; readOnly?: boolean }) {
+export function CreatorDraftFiles({ draftId, files, categories, sentCount = 0 }: { draftId: string; files: FileRow[]; categories: Opt[]; sentCount?: number }) {
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -50,7 +50,8 @@ export function CreatorDraftFiles({ draftId, files, categories, readOnly = false
 
   return (
     <div className="section">
-      <h2>Scripts &amp; material</h2>
+      <h2>Poster, scripts &amp; material</h2>
+      <p className="subtle">Have a poster? Upload it with the category Poster. {sentCount > 0 ? `Anything you add here is also delivered to the ${sentCount} production house${sentCount === 1 ? "" : "s"} that already ${sentCount === 1 ? "has" : "have"} this pitch.` : "Documents can still be added after you pitch."}</p>
       {error && <p className="error" role="alert">{error}</p>}
       {files.length === 0 ? <p className="muted">No files yet.</p> : (
         <table className="data"><tbody>
@@ -58,12 +59,12 @@ export function CreatorDraftFiles({ draftId, files, categories, readOnly = false
             <tr key={f.id}>
               <td><a href={`/api/v1/creator/drafts/${draftId}/files/${f.id}`}>{f.title}</a><div className="muted">{f.originalFilename}</div></td>
               <td>{label(f.categoryKey)}</td><td>{mb(f.sizeBytes)}</td>
-              <td>{!readOnly && <button type="button" className="btn-secondary" onClick={() => remove(f.id)}>Remove</button>}</td>
+              <td><button type="button" className="btn-secondary" onClick={() => remove(f.id)}>Remove</button></td>
             </tr>
           ))}
         </tbody></table>
       )}
-      {!readOnly && (
+      {(
         <form onSubmit={upload}>
           {status && <p className="subtle" role="status">{status}</p>}
           <div className="form-grid">

@@ -29,7 +29,7 @@ const URL_ERRORS: Record<string, string> = {
 
 type Step = "password" | "mfa" | "wa-mobile" | "wa-code" | "wa-choose" | "social" | "ready";
 interface AccountChoice { userId: string; company: string; name: string; email: string }
-interface SessionReply { mustChangePassword?: boolean; mfaEnrolmentRequired?: boolean; mfaRequired?: boolean; choose?: AccountChoice[]; choiceToken?: string }
+interface SessionReply { creator?: boolean; mustChangePassword?: boolean; mfaEnrolmentRequired?: boolean; mfaRequired?: boolean; choose?: AccountChoice[]; choiceToken?: string }
 
 const TITLES: Record<Step, string> = {
   password: "Sign in", mfa: "Two-factor verification", "wa-mobile": "Sign in with WhatsApp", "wa-code": "Enter your code", "wa-choose": "Choose an account", social: "Sign in", ready: "Ready to roll",
@@ -44,6 +44,8 @@ export function LoginForm({ initialStep, google = false, whatsapp = false, urlEr
   const [choiceToken, setChoiceToken] = useState("");
   const { clapping, clapThen } = useClap();
   const [shot, setShot] = useState<Take | null>(null);
+  // Where Action leads: the staff dashboard, or the Creator Studio when the verified number belongs to a writer.
+  const [landing, setLanding] = useState("/dashboard");
 
   // Signed in: the slate gets a fresh scene and take, remembered for the dashboard's camera overlay.
   useEffect(() => {
@@ -68,6 +70,7 @@ export function LoginForm({ initialStep, google = false, whatsapp = false, urlEr
     setError(null); setBusy(true);
     try {
       const r: SessionReply = await post("/api/v1/auth/otp/choose", { choiceToken, userId });
+      if (r.creator) { setLanding("/creator"); ready(); return; }
       if (afterSession(r)) return;
       ready();
     } catch (err) {
@@ -83,7 +86,7 @@ export function LoginForm({ initialStep, google = false, whatsapp = false, urlEr
     if (step === "ready") {
       // Action! The clap lands, the take is called, then the dashboard opens.
       if (shot) announceTake(shot.take, soundEnabled());
-      clapThen("/dashboard"); // fixed internal path — no open redirect
+      clapThen(landing); // one of two fixed internal paths — no open redirect
       return;
     }
     const form = new FormData(e.currentTarget);
@@ -99,6 +102,7 @@ export function LoginForm({ initialStep, google = false, whatsapp = false, urlEr
       } else if (step === "wa-code") {
         const r: SessionReply = await post("/api/v1/auth/otp/verify", { mobile, code: form.get("code") });
         if (r.choose && r.choiceToken) { setAccounts(r.choose); setChoiceToken(r.choiceToken); setStep("wa-choose"); setBusy(false); return; }
+        if (r.creator) { setLanding("/creator"); ready(); return; }
         if (afterSession(r)) return;
         ready(); return;
       } else {
@@ -178,7 +182,7 @@ export function LoginForm({ initialStep, google = false, whatsapp = false, urlEr
         {step === "wa-code" && <p className="subtle"><button type="button" className="link-btn" onClick={() => go("wa-mobile")}>Use a different number</button></p>}
         {step === "wa-choose" && <p className="subtle"><button type="button" className="link-btn" onClick={() => go("wa-mobile")}>Start again</button></p>}
         {(step === "wa-mobile" || step === "social") && (
-          <p className="subtle register-cta">Have a story to pitch? <a href="/creator">Register or sign in as a writer or director</a></p>
+          <p className="subtle register-cta">New writer or director? <a href="/signup">Sign up to pitch your stories</a></p>
         )}
         {step === "password" && (
           <p className="subtle"><a href="/forgot-password">Forgot password?</a> · <a href="/login">Back to sign in with mobile or Google</a></p>

@@ -48,7 +48,8 @@ export const portalNav = (token: string, current: "pitches" | "new" | "profile")
 ];
 
 /** Navigation for the platform-wide creator space. */
-export const creatorNav = (current: "pitches" | "new"): WriterNavItem[] => [
-  { href: "/creator", label: "Your pitches", current: current === "pitches" },
-  { href: "/creator/drafts/new", label: "New pitch", current: current === "new" },
+export const creatorNav = (current: "pitches" | "new" | "houses" | "profile"): WriterNavItem[] => [
+  { href: "/creator", label: "Pitches", current: current === "pitches" || current === "new" },
+  { href: "/creator/houses", label: "Production Houses", current: current === "houses" },
+  { href: "/creator/profile", label: "Profile", current: current === "profile" },
 ];

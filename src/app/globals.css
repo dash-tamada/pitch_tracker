@@ -1526,3 +1526,13 @@ label.btn-inline.is-busy { opacity: .6; cursor: progress; }
 .intake-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
 .intake-alert .btn-secondary { color: #f3ece0; background: rgba(255, 255, 255, .06); border: 1px solid rgba(255, 255, 255, .3); }
 .intake-alert .btn-secondary:hover { background: rgba(255, 255, 255, .14); }
+
+/* the pop-up arrives in the middle of the screen, like a letter being delivered */
+.intake-overlay { position: fixed; inset: 0; z-index: 70; display: grid; place-items: center; padding: 16px; background: rgba(6, 4, 3, .62); backdrop-filter: blur(3px); animation: intake-fade .3s ease-out; }
+.intake-overlay .intake-alert { position: relative; right: auto; bottom: auto; width: min(460px, 100%); padding: 22px 24px; border-radius: 20px; animation: intake-deliver .6s cubic-bezier(.2, .9, .3, 1.15); }
+.intake-overlay .intake-ico { width: 46px; height: 46px; animation: intake-wiggle 1.2s .6s ease-in-out 2; }
+.intake-overlay .intake-head strong { font-size: 1.2rem; }
+@keyframes intake-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes intake-deliver { 0% { transform: translateY(-90px) scale(.85) rotate(-3deg); opacity: 0; } 60% { opacity: 1; } 100% { transform: none; opacity: 1; } }
+@keyframes intake-wiggle { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-12deg); } 75% { transform: rotate(12deg); } }
+@media (prefers-reduced-motion: reduce) { .intake-overlay, .intake-overlay .intake-alert, .intake-overlay .intake-ico { animation: none; } }

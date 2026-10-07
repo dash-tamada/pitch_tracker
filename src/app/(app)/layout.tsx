@@ -38,7 +38,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const [unread, brand, me, incoming] = await Promise.all([
     unreadCount(db, actor), companyBranding(db),
     db.select({ name: users.fullName }).from(users).where(eq(users.id, actor.userId)).then((r) => r[0]),
-    unseenIntake(db, actor).catch(() => []),
+    unseenIntake(db, actor).catch((e) => { console.error(JSON.stringify({ level: "error", route: "intake-alert", message: String(e?.cause?.message ?? e?.message).slice(0, 200) })); return []; }),
   ]);
   const first = (me?.name ?? "").trim().split(/\s+/)[0] ?? "";
   const initial = first.charAt(0).toUpperCase() || "U";

@@ -1,6 +1,6 @@
 -- "New pitch received" alert for company staff. A pitch that arrived from outside (creator portal or Creator Studio) is shown to
 -- staff as a pop-up until ANYONE in the company acknowledges it; this table records that acknowledgement (one row per pitch,
--- company-wide). Pitches that already exist when this runs count as already seen, so nobody is greeted by a backlog.
+-- company-wide). Pitches older than a day count as already seen, so nobody is greeted by a backlog.
 
 CREATE TABLE public.pitch_intake_acks (
 	"company_id" uuid NOT NULL DEFAULT public.app_company_id() REFERENCES public.companies("id"),
@@ -12,7 +12,7 @@ CREATE TABLE public.pitch_intake_acks (
 CREATE INDEX pitch_intake_acks_company_idx ON public.pitch_intake_acks (company_id);
 --> statement-breakpoint
 INSERT INTO public.pitch_intake_acks (company_id, pitch_id)
-SELECT company_id, id FROM public.pitches WHERE submitted_via_portal = true
+SELECT company_id, id FROM public.pitches WHERE submitted_via_portal = true AND created_at < now() - interval '1 day'
 ON CONFLICT DO NOTHING;
 --> statement-breakpoint
 ALTER TABLE public.pitch_intake_acks ENABLE ROW LEVEL SECURITY;

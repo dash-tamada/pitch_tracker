@@ -9,6 +9,9 @@ export function HeroBanner({ name, canCreate }: { name: string; canCreate: boole
   return (
     <section className="hero">
       <div className="hero-art" aria-hidden="true" />
+      <div className="studio-chair" aria-hidden="true">
+        <span className={`chair-name ${name.length <= 9 ? "cn-l" : name.length <= 14 ? "cn-m" : "cn-s"}`}>{name}</span>
+      </div>
       <div className="hero-copy">
         <p className="hero-eyebrow"><span>{name} · Story pipeline</span></p>
         <h1 className="hero-title">

@@ -6,6 +6,8 @@ import { users } from "@/server/db/schema";
 import { requirePageSession } from "@/server/lib/page-session";
 import type { Permission } from "@/server/modules/authz/permissions";
 import { unreadCount } from "@/server/modules/notifications/service";
+import { unseenIntake } from "@/server/modules/pitches/intake";
+import { NewPitchAlert } from "@/components/new-pitch-alert";
 import { companyBranding } from "@/server/modules/tenancy/company";
 import { LogoutButton } from "@/components/logout-button";
 import { NavLinks } from "@/components/nav-links";
@@ -33,9 +35,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // Hiding links is convenience only — every API and page re-checks permissions on the server.
   const items = NAV.filter((n) => n.anyOf.some((p) => actor.permissions.has(p)));
   const db = getDb(actor);
-  const [unread, brand, me] = await Promise.all([
+  const [unread, brand, me, incoming] = await Promise.all([
     unreadCount(db, actor), companyBranding(db),
     db.select({ name: users.fullName }).from(users).where(eq(users.id, actor.userId)).then((r) => r[0]),
+    unseenIntake(db, actor).catch(() => []),
   ]);
   const first = (me?.name ?? "").trim().split(/\s+/)[0] ?? "";
   const initial = first.charAt(0).toUpperCase() || "U";
@@ -50,6 +53,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <div className="shell">
       <PosterBackdrop />
       <RgbHistogram />
+      <NewPitchAlert items={incoming.map((i) => ({ id: i.id, code: i.code, title: i.title, creator: i.creator }))} />
       {color && <style nonce={nonce}>{`:root{--accent:${color}}`}</style>}
       <nav className="nav" aria-label="Main">
         <div className="brand">

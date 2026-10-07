@@ -1504,3 +1504,25 @@ label.btn-inline.is-busy { opacity: .6; cursor: progress; }
 .writer-shell .main:has(.dash) { max-width: none; padding-top: 0; }
 .writer-shell .dash > :not(.hero):not(.hero-fade) { max-width: 1080px; margin-left: auto; margin-right: auto; }
 .writer-shell .dash > .cards, .writer-shell .dash > .section { width: 100%; }
+
+/* the production house's name on the staff chair (same overlay the Creator Studio uses for the writer's name) */
+.hero .studio-chair { position: absolute; top: 0; right: 0; bottom: 0; aspect-ratio: 819 / 760; max-width: 56%; z-index: -1; container-type: inline-size; pointer-events: none; }
+@media (max-width: 900px) { .hero .studio-chair { display: none; } }
+
+/* "new pitch received" pop-up for staff */
+.intake-alert { position: fixed; z-index: 60; right: 22px; bottom: 22px; width: min(380px, calc(100vw - 32px)); padding: 16px 18px; border-radius: 16px;
+  background: rgba(24, 18, 14, .94); border: 1px solid rgba(255, 140, 50, .55); color: #f3ece0; backdrop-filter: blur(14px);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, .55), 0 0 0 1px rgba(255, 140, 50, .12); animation: intake-in .35s ease-out; }
+@keyframes intake-in { from { transform: translateY(16px); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .intake-alert { animation: none; } }
+.intake-head { display: flex; gap: 12px; align-items: center; }
+.intake-head > div { display: grid; }
+.intake-ico { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; background: linear-gradient(180deg, #ff8a3d, #ef4b23); color: #fff; }
+.intake-list { list-style: none; margin: 12px 0 4px; padding: 0; display: grid; gap: 6px; }
+.intake-item { all: unset; box-sizing: border-box; display: grid; width: 100%; padding: 8px 10px; border-radius: 10px; cursor: pointer; background: rgba(255, 255, 255, .05); }
+.intake-item:hover, .intake-item:focus-visible { background: rgba(255, 255, 255, .12); }
+.intake-title { font-weight: 700; }
+.intake-more { margin: 4px 2px; }
+.intake-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+.intake-alert .btn-secondary { color: #f3ece0; background: rgba(255, 255, 255, .06); border: 1px solid rgba(255, 255, 255, .3); }
+.intake-alert .btn-secondary:hover { background: rgba(255, 255, 255, .14); }
